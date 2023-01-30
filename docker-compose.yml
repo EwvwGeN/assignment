@@ -1,0 +1,18 @@
+version: "3"
+services:
+  reindexer:
+    image: "reindexer/reindexer"
+    ports:
+      - "9088:9088"
+      - "6534:6534"
+    volumes:
+      - "storage:/var/lib/reindexer/data"
+  server:
+    build: ./
+    network_mode: host
+    depends_on:
+      - reindexer
+volumes:
+  storage:
+    external: true
+
