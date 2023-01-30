@@ -1,4 +1,4 @@
-module github.com/EwvwGeN/assignment.git
+module github.com/EwvwGeN/assignment
 
 go 1.18
 
