@@ -1,0 +1,12 @@
+# config
+Dockerfile
+docker-compose.yml
+
+# executable
+*.exe
+
+# binary ouput
+main
+
+# other
+Makefile
