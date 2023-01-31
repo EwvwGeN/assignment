@@ -1,5 +1,7 @@
 package server
 
+import "os"
+
 type Config struct {
 	Host   string `yaml:"host"`
 	Port   string `yaml:"port"`
@@ -8,8 +10,16 @@ type Config struct {
 
 func NewConfig() *Config {
 	return &Config{
-		Host:   "localhost",
-		Port:   "6534",
-		DBname: "testdb",
+		Host:   getEnv("HOST", "localhost"),
+		Port:   getEnv("PORT", "6534"),
+		DBname: getEnv("DB_NAME", "testdb"),
 	}
+}
+
+func getEnv(envKey string, defaultVal string) string {
+	if value, exists := os.LookupEnv(envKey); exists {
+		return value
+	}
+
+	return defaultVal
 }
