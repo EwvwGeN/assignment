@@ -8,8 +8,13 @@ services:
     volumes:
       - "storage:/var/lib/reindexer/data"
   server:
-    build: ./
+    build:
+      context: ./
+      args:
+        - ISCNF
     network_mode: host
+    env_file:
+      - .env
     depends_on:
       - reindexer
 volumes:

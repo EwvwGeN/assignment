@@ -1,3 +1,6 @@
-FROM scratch
+FROM alpine
 ADD main /server/
-CMD ["server/main"]
+ADD ./configs/ /configs/
+ARG ISCNF
+ENV ISCNF=${ISCNF}
+CMD ["sh", "-c", "server/main $ISCNF"]
