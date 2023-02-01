@@ -3,16 +3,18 @@ package server
 import "os"
 
 type Config struct {
-	Host   string `yaml:"host"`
-	Port   string `yaml:"port"`
-	DBname string `yaml:"dbname"`
+	Host           string `yaml:"host"`
+	Port           string `yaml:"port"`
+	DBname         string `yaml:"dbname"`
+	CollectionName string `yaml:"collectionname"`
 }
 
 func NewConfig() *Config {
 	return &Config{
-		Host:   getEnv("HOST", "localhost"),
-		Port:   getEnv("PORT", "6534"),
-		DBname: getEnv("DB_NAME", "testdb"),
+		Host:           getEnv("HOST", "localhost"),
+		Port:           getEnv("PORT", "6534"),
+		DBname:         getEnv("DB_NAME", "testdb"),
+		CollectionName: getEnv("COLLECTION_NAME", "documents"),
 	}
 }
 
