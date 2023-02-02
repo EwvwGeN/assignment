@@ -6,7 +6,7 @@ services:
       - "9088:9088"
       - "6534:6534"
     volumes:
-      - "storage:/var/lib/reindexer/data"
+      - "storage:/db"
   server:
     build:
       context: ./
