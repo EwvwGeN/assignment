@@ -2,13 +2,11 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
 
 	"github.com/EwvwGeN/assignment/internal/app/server"
 	"github.com/joho/godotenv"
-	"github.com/restream/reindexer"
 	"gopkg.in/yaml.v2"
 )
 
@@ -25,8 +23,8 @@ func init() {
 func main() {
 	flag.Parse()
 	config := getConfig()
-	db := reindexer.NewReindex(fmt.Sprintf("cproto://%s:%s/%s", config.Host, config.Port, config.DBname), reindexer.WithCreateDBIfMissing())
-	fmt.Println(db.Ping())
+	server := server.NewServer(config)
+	server.Start()
 }
 
 func getConfig() *server.Config {
