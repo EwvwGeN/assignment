@@ -44,7 +44,7 @@ func (server *Server) Start() {
 }
 
 func (server *Server) configureRouter() {
-	simpleDocGroupe := server.router.Group("/docs")
+	simpleDocGroupe := server.router.Group("/doc")
 	{
 		simpleDocGroupe.GET("/all", server.getAllDocs)
 		simpleDocGroupe.GET("/id=:id", server.getDocById)
@@ -58,7 +58,6 @@ func (server *Server) configureRouter() {
 func (server *Server) createDoc(ctx *gin.Context) {
 	var newDocument models.Document
 	ctx.BindJSON(&newDocument)
-	fmt.Println(newDocument)
 	server.db.Upsert(server.config.CollectionName, &newDocument, "id=serial()")
 	ctx.IndentedJSON(http.StatusOK, newDocument)
 }
@@ -70,7 +69,6 @@ func (server *Server) getAllDocs(ctx *gin.Context) {
 	for iterator.Next() {
 		elem := iterator.Object().(*models.Document)
 		ctx.IndentedJSON(http.StatusOK, elem)
-		fmt.Println(*elem)
 	}
 }
 
@@ -85,7 +83,7 @@ func (server *Server) getDocById(ctx *gin.Context) {
 }
 
 func (server *Server) updateDoc(ctx *gin.Context) {
-	var document models.Document
+	var document models.AllowedField
 	var jsonData map[string]interface{}
 	data, _ := ioutil.ReadAll(ctx.Request.Body)
 	json.Unmarshal(data, &document)
