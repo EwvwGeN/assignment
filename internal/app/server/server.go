@@ -52,6 +52,10 @@ func (server *Server) configureRouter() {
 		simpleDocGroupe.PUT("", server.updateDoc)
 		simpleDocGroupe.DELETE("/id=:id", server.deleteDoc)
 	}
+	bigDocGroupe := server.router.Group("/big-doc")
+	{
+		bigDocGroupe.GET("/all", server.getAllBigDocs)
+	}
 	server.router.Run(fmt.Sprintf("%s:%s", server.config.ApiHost, server.config.APiPort))
 }
 
@@ -124,4 +128,27 @@ func (server *Server) findDoc(id interface{}) (interface{}, bool) {
 	query := server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id)
 	doc, found := query.Get()
 	return doc, found
+}
+
+func (server *Server) getAllBigDocs(ctx *gin.Context) {
+	query := server.db.Query(server.config.CollectionName).Where("parent_id", reindexer.EQ, 0)
+	iterator := query.Exec()
+	defer iterator.Close()
+	for iterator.Next() {
+		elem := iterator.Object().(*models.Document)
+		bigDoc := server.bigDoc(elem)
+		ctx.IndentedJSON(http.StatusOK, bigDoc)
+	}
+}
+
+func (server *Server) bigDoc(input interface{}) models.BigDocument {
+	var bigDoc models.BigDocument
+	item := input.(*models.Document)
+	bigDoc.Id = item.Id
+	bigDoc.Body = item.Body
+	for _, childId := range item.ChildList {
+		childDoc, _ := server.findDoc(childId)
+		bigDoc.ChildList = append(bigDoc.ChildList, server.bigDoc(childDoc))
+	}
+	return bigDoc
 }
