@@ -3,14 +3,13 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"reflect"
-	"strings"
 
 	"github.com/EwvwGeN/assignment/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/restream/reindexer"
+	"golang.org/x/sync/errgroup"
 )
 
 type Server struct {
@@ -46,10 +45,10 @@ func (server *Server) Start() {
 func (server *Server) configureRouter() {
 	simpleDocGroupe := server.router.Group("/doc")
 	{
-		simpleDocGroupe.GET("/all", server.getAllDocs)
+		simpleDocGroupe.GET("/all", server.getAllDocs())
 		simpleDocGroupe.GET("/id=:id", server.getDocById)
-		simpleDocGroupe.POST("", server.createDoc)
-		simpleDocGroupe.PUT("", server.updateDoc)
+		simpleDocGroupe.POST("", server.createDoc())
+		simpleDocGroupe.PUT("", server.updateDoc())
 		simpleDocGroupe.DELETE("/id=:id", server.deleteDoc)
 	}
 	bigDocGroupe := server.router.Group("/big-doc")
@@ -59,20 +58,26 @@ func (server *Server) configureRouter() {
 	server.router.Run(fmt.Sprintf("%s:%s", server.config.ApiHost, server.config.APiPort))
 }
 
-func (server *Server) createDoc(ctx *gin.Context) {
-	var newDocument models.Document
-	ctx.BindJSON(&newDocument)
-	server.db.Upsert(server.config.CollectionName, &newDocument, "id=serial()")
-	ctx.IndentedJSON(http.StatusOK, newDocument)
+func (server *Server) createDoc() gin.HandlerFunc {
+	return server.checkJson(func(ctx *gin.Context) {
+		jsonData := ctx.GetStringMap("data")
+		jsonStr, _ := json.Marshal(jsonData)
+		var newDocument models.Document
+		json.Unmarshal(jsonStr, &newDocument)
+		server.db.Insert(server.config.CollectionName, &newDocument, "id=serial()")
+		ctx.IndentedJSON(http.StatusOK, newDocument)
+	})
 }
 
-func (server *Server) getAllDocs(ctx *gin.Context) {
-	query := server.db.Query(server.config.CollectionName)
-	iterator := query.Exec()
-	defer iterator.Close()
-	for iterator.Next() {
-		elem := iterator.Object().(*models.Document)
-		ctx.IndentedJSON(http.StatusOK, elem)
+func (server *Server) getAllDocs() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		query := server.db.Query(server.config.CollectionName)
+		iterator := query.Exec()
+		defer iterator.Close()
+		for iterator.Next() {
+			elem := iterator.Object().(*models.Document)
+			ctx.IndentedJSON(http.StatusOK, elem)
+		}
 	}
 }
 
@@ -86,31 +91,90 @@ func (server *Server) getDocById(ctx *gin.Context) {
 	ctx.IndentedJSON(http.StatusOK, doc)
 }
 
-func (server *Server) updateDoc(ctx *gin.Context) {
-	var document models.AllowedField
-	var jsonData map[string]interface{}
-	data, _ := ioutil.ReadAll(ctx.Request.Body)
-	json.Unmarshal(data, &document)
-	json.Unmarshal(data, &jsonData)
-	_, found := server.findDoc(document.Id)
-	if !found {
-		ctx.IndentedJSON(http.StatusNotFound, gin.H{"message": "document doesnt exist"})
-		return
-	}
-	query := server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, document.Id)
-	types := reflect.TypeOf(document)
-	for key, item := range jsonData {
-		if field, exist := types.FieldByName(key); exist {
-			query.Set(field.Name, item)
-		}
-	}
-	query.Update()
+func (server *Server) updateDoc() gin.HandlerFunc {
+	return server.checkJson(server.checkExist(func(ctx *gin.Context) {
+		var document models.AllowedField
+		var jsonData map[string]interface{}
+		id := ctx.GetString("id")
+		jsonData = ctx.GetStringMap("data")
 
-	ctx.IndentedJSON(http.StatusOK, gin.H{"message": "ok"})
+		if err := server.updateChild(jsonData); err != nil {
+			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		query := server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id)
+		types := reflect.TypeOf(document)
+		for key, value := range jsonData {
+			if field, exist := types.FieldByName(key); exist {
+				query.Set(field.Name, value)
+			}
+		}
+		query.Update()
+
+		ctx.IndentedJSON(http.StatusOK, gin.H{"message": "ok"})
+	}))
 }
 
-func getReindFieldName(field reflect.StructField) string {
-	return strings.Split(field.Tag.Get("reindex"), ",")[0]
+func (server *Server) updateChild(jsonData map[string]interface{}) error {
+	if jsonData["ChildList"] == nil {
+		return nil
+	}
+	var parentHeight int
+	var maxChildDepth int
+	parentId := int64(jsonData["Id"].(float64))
+	childs := jsonData["ChildList"].([]interface{})
+	hight, err := server.getDocHeight(parentId)
+	if err != nil {
+		return err
+	}
+	parentHeight = hight.(int)
+
+	eg := &errgroup.Group{}
+
+	for _, value := range childs {
+		id := value
+		eg.Go(func() error {
+			doc, found := server.findDoc(id)
+			if !found {
+				return fmt.Errorf("File Id:%.f does not exist", id)
+			}
+			depth := doc.(*models.Document).Depth
+			if depth+parentHeight+1 > 2 {
+				return fmt.Errorf("Can not add doc with id:%s. Nesting level more then %d", id, 2)
+			}
+			if depth > maxChildDepth {
+				maxChildDepth = depth
+			}
+			return nil
+		})
+	}
+
+	if err := eg.Wait(); err != nil {
+		fmt.Println(err)
+		return err
+	}
+	server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, parentId).
+		Set("Depth", maxChildDepth+1).Update().Close()
+	for _, value := range childs {
+		server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, value).Set("ParentId", parentId).Update()
+	}
+	return nil
+}
+
+func (server *Server) getDocHeight(id interface{}) (interface{}, error) {
+	var currentHight int
+	doc, found := server.findDoc(id)
+	if !found {
+		return nil, fmt.Errorf("No such file with id:%s", id)
+	}
+	document := doc.(*models.Document)
+	for document.ParentId != 0 {
+		currentHight++
+		doc, _ = server.findDoc(document.ParentId)
+		document = doc.(*models.Document)
+	}
+	return currentHight, nil
 }
 
 func (server *Server) deleteDoc(ctx *gin.Context) {
