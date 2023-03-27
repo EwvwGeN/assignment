@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"reflect"
@@ -10,6 +11,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/restream/reindexer"
 	"golang.org/x/sync/errgroup"
+)
+
+var (
+	NullId           = errors.New("Missing Id")
+	DocumentNotExist = errors.New("Document doesnt exist")
+	DeplthLevel      = errors.New("Nesting level is higher than allowed")
+	InvalidRequest   = errors.New("Invalid request")
 )
 
 type Server struct {
@@ -85,7 +93,7 @@ func (server *Server) getDocById(ctx *gin.Context) {
 	id := ctx.Param("id")
 	doc, found := server.findDoc(id)
 	if !found {
-		ctx.IndentedJSON(http.StatusNotFound, gin.H{"message": "document doesnt exist"})
+		ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("%s: File Id:%s", DocumentNotExist.Error(), id)})
 		return
 	}
 	ctx.IndentedJSON(http.StatusOK, doc)
@@ -137,11 +145,11 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 		eg.Go(func() error {
 			doc, found := server.findDoc(id)
 			if !found {
-				return fmt.Errorf("File Id:%.f does not exist", id)
+				return fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), id)
 			}
 			depth := doc.(*models.Document).Depth
 			if depth+parentHeight+1 > 2 {
-				return fmt.Errorf("Can not add doc with id:%s. Nesting level more then %d", id, 2)
+				return fmt.Errorf("%s: File Id:%d", DeplthLevel.Error(), id)
 			}
 			if depth > maxChildDepth {
 				maxChildDepth = depth
@@ -155,7 +163,7 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 		return err
 	}
 	server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, parentId).
-		Set("Depth", maxChildDepth+1).Update().Close()
+		Set("Depth", maxChildDepth+1).Update()
 	for _, value := range childs {
 		server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, value).Set("ParentId", parentId).Update()
 	}
@@ -166,7 +174,7 @@ func (server *Server) getDocHeight(id interface{}) (interface{}, error) {
 	var currentHight int
 	doc, found := server.findDoc(id)
 	if !found {
-		return nil, fmt.Errorf("No such file with id:%s", id)
+		return nil, fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), id)
 	}
 	document := doc.(*models.Document)
 	for document.ParentId != 0 {
@@ -181,7 +189,7 @@ func (server *Server) deleteDoc(ctx *gin.Context) {
 	id := ctx.Param("id")
 	doc, found := server.findDoc(id)
 	if !found {
-		ctx.IndentedJSON(http.StatusNotFound, gin.H{"message": "document doesnt exist"})
+		ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("%s: File Id:%s", DocumentNotExist.Error(), id)})
 		return
 	}
 	server.db.Delete(server.config.CollectionName, doc)

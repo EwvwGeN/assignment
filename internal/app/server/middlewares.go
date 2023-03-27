@@ -15,7 +15,7 @@ func (server *Server) checkJson(next gin.HandlerFunc) gin.HandlerFunc {
 		var document models.Document
 		data, _ := ioutil.ReadAll(ctx.Request.Body)
 		if err := json.Unmarshal(data, &document); err != nil {
-			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"message": "invalid request"})
+			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": InvalidRequest.Error()})
 			return
 		}
 		var jsonData map[string]interface{}
@@ -33,7 +33,7 @@ func (server *Server) checkExist(next gin.HandlerFunc) gin.HandlerFunc {
 		if id == "" {
 			jsonData = ctx.GetStringMap("data")
 			if jsonData["Id"] == nil {
-				ctx.IndentedJSON(http.StatusNotFound, gin.H{"message": "document doesnt exist"})
+				ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": NullId.Error()})
 				return
 			}
 			id = fmt.Sprintf("%.f", jsonData["Id"].(float64))
@@ -41,7 +41,7 @@ func (server *Server) checkExist(next gin.HandlerFunc) gin.HandlerFunc {
 
 		doc, found := server.findDoc(id)
 		if !found {
-			ctx.IndentedJSON(http.StatusNotFound, gin.H{"message": "document doesnt exist"})
+			ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": DocumentNotExist.Error()})
 			return
 		}
 		if jsonData == nil {
