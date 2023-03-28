@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strconv"
+	"sync"
 
 	"github.com/EwvwGeN/assignment/internal/models"
 	"github.com/gin-gonic/gin"
@@ -57,7 +59,7 @@ func (server *Server) configureRouter() {
 		simpleDocGroupe.GET("/id=:id", server.getDocById)
 		simpleDocGroupe.POST("", server.createDoc())
 		simpleDocGroupe.PUT("", server.updateDoc())
-		simpleDocGroupe.DELETE("/id=:id", server.deleteDoc)
+		simpleDocGroupe.DELETE("/id=:id", server.deleteDoc())
 	}
 	bigDocGroupe := server.router.Group("/big-doc")
 	{
@@ -185,20 +187,91 @@ func (server *Server) getDocHeight(id interface{}) (interface{}, error) {
 	return currentHight, nil
 }
 
-func (server *Server) deleteDoc(ctx *gin.Context) {
-	id := ctx.Param("id")
-	doc, found := server.findDoc(id)
-	if !found {
-		ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("%s: File Id:%s", DocumentNotExist.Error(), id)})
-		return
+func (server *Server) deleteDoc() gin.HandlerFunc {
+	return server.checkExist(func(ctx *gin.Context) {
+		var jsonData map[string]interface{}
+		id, _ := strconv.ParseInt(ctx.GetString("id"), 10, 64)
+		jsonData = ctx.GetStringMap("data")
+		upperWg := new(sync.WaitGroup)
+		upperWg.Add(2)
+		go func(upperWg *sync.WaitGroup) {
+			defer upperWg.Done()
+			wg := new(sync.WaitGroup)
+			childs, _ := jsonData["ChildList"].([]interface{})
+			wg.Add(len(childs))
+			for _, value := range childs {
+				go func(wg *sync.WaitGroup, id interface{}) {
+					defer wg.Done()
+					server.innerDelete(id)
+				}(wg, value)
+			}
+			wg.Wait()
+		}(upperWg)
+
+		go func(upperWg *sync.WaitGroup) {
+			defer upperWg.Done()
+			parentId := int64(jsonData["ParentId"].(float64))
+			if parentId == 0 {
+				server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id).Delete()
+				return
+			}
+			interfaceParentDoc, _ := server.findDoc(parentId)
+			ParentDoc := interfaceParentDoc.(*models.Document)
+			parentChild := func() []int64 {
+				buffer := ParentDoc.ChildList
+				for i, value := range buffer {
+					if value == id {
+						return append(buffer[:i], buffer[i+1:]...)
+					}
+				}
+				return nil
+			}()
+			checkPId := parentId
+			checkPChild := parentChild
+			checkPDepth := ParentDoc.Depth
+			for checkPId != 0 {
+				query := server.db.Query(server.config.CollectionName).Where("id", reindexer.ANY, checkPChild)
+				query.AggregateMax("Depth")
+				iterator := query.Exec()
+				maxChildDepth := int(iterator.AggResults()[0].Value)
+				iterator.Close()
+				if maxChildDepth+1 == checkPDepth {
+					break
+				}
+				server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, checkPId).
+					Set("Depth", maxChildDepth+1).Update()
+				bufferCheckDoc, _ := server.findDoc(checkPId)
+				checkDoc := bufferCheckDoc.(*models.Document)
+				checkPId = checkDoc.ParentId
+				checkPChild = checkDoc.ChildList
+				checkPDepth = checkDoc.Depth
+			}
+
+			server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, parentId).
+				Set("ChildList", parentChild).Update()
+		}(upperWg)
+
+		upperWg.Wait()
+		ctx.IndentedJSON(http.StatusOK, gin.H{"message": "ok"})
+	})
+}
+
+func (server *Server) innerDelete(id interface{}) *models.Document {
+	interfaceDoc, _ := server.findDoc(id)
+	doc := interfaceDoc.(*models.Document)
+	if doc.ChildList != nil {
+		for _, value := range doc.ChildList {
+			server.innerDelete(value)
+		}
 	}
 	server.db.Delete(server.config.CollectionName, doc)
-	ctx.IndentedJSON(http.StatusOK, doc)
+	return doc
 }
 
 func (server *Server) findDoc(id interface{}) (interface{}, bool) {
 	query := server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id)
 	doc, found := query.Get()
+	fmt.Println(id, " ", doc)
 	return doc, found
 }
 
