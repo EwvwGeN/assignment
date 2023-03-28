@@ -27,7 +27,7 @@ func (server *Server) checkJson(next gin.HandlerFunc) gin.HandlerFunc {
 
 func (server *Server) checkExist(next gin.HandlerFunc) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		var document models.Document
+		var document *models.Document
 		var jsonData map[string]interface{}
 		id := ctx.Param("id")
 		if id == "" {
@@ -45,7 +45,7 @@ func (server *Server) checkExist(next gin.HandlerFunc) gin.HandlerFunc {
 			return
 		}
 		if jsonData == nil {
-			document = doc.(models.Document)
+			document = doc.(*models.Document)
 			jsonByte, _ := json.Marshal(document)
 			json.Unmarshal(jsonByte, &jsonData)
 		}
