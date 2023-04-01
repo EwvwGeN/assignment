@@ -130,19 +130,28 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	if jsonData["ChildList"] == nil {
 		return nil
 	}
-	var parentHeight int
-	var maxChildDepth int
-	parentId := int64(jsonData["Id"].(float64))
-	childs := jsonData["ChildList"].([]interface{})
-	hight, err := server.getDocHeight(parentId)
+	var docHeight int
+	id := int64(jsonData["Id"].(float64))
+	interfaceDoc, _ := server.findDoc(id)
+	doc := interfaceDoc.(*models.Document)
+	docChilds := doc.ChildList
+	inputChilds := func(in []interface{}) (out []int64) {
+		out = make([]int64, 0, len(in))
+		for _, v := range in {
+			out = append(out, int64(v.(float64)))
+		}
+		return
+	}(jsonData["ChildList"].([]interface{}))
+
+	delChilds, addChilds := Difference(docChilds, inputChilds)
+	height, err := server.getDocHeight(id)
 	if err != nil {
 		return err
 	}
-	parentHeight = hight.(int)
+	docHeight = height.(int)
 
 	eg := &errgroup.Group{}
-
-	for _, value := range childs {
+	for _, value := range addChilds {
 		id := value
 		eg.Go(func() error {
 			doc, found := server.findDoc(id)
@@ -150,25 +159,61 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 				return fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), id)
 			}
 			depth := doc.(*models.Document).Depth
-			if depth+parentHeight+1 > 2 {
+			if depth+docHeight+1 > server.config.NestingLevel {
 				return fmt.Errorf("%s: File Id:%d", DeplthLevel.Error(), id)
-			}
-			if depth > maxChildDepth {
-				maxChildDepth = depth
 			}
 			return nil
 		})
 	}
-
 	if err := eg.Wait(); err != nil {
 		fmt.Println(err)
 		return err
 	}
-	server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, parentId).
-		Set("Depth", maxChildDepth+1).Update()
-	for _, value := range childs {
-		server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, value).Set("ParentId", parentId).Update()
+
+	firstWg := new(sync.WaitGroup)
+	firstWg.Add(len(delChilds))
+	for _, childId := range delChilds {
+		go func(wg *sync.WaitGroup, childId int64) {
+			defer wg.Done()
+			server.innerDelete(childId)
+		}(firstWg, childId)
+		server.innerDelete(childId)
 	}
+	firstWg.Wait()
+
+	secondWg := new(sync.WaitGroup)
+	secondWg.Add(3)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		query := server.db.Query(server.config.CollectionName).Where("id", reindexer.ANY, inputChilds)
+		query.AggregateMax("Depth")
+		iterator := query.Exec()
+		maxChildDepth := int(iterator.AggResults()[0].Value)
+		iterator.Close()
+		currentId := id
+		currentDoc := doc
+		for i := 1; currentId != 0; i++ {
+			if currentDoc.Depth == maxChildDepth+i {
+				break
+			}
+			server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, currentId).
+				Set("Depth", maxChildDepth+i).Update()
+			buffer, _ := server.findDoc(currentId)
+			currentDoc = buffer.(*models.Document)
+			currentId = currentDoc.ParentId
+		}
+	}(secondWg)
+
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		server.db.Query(server.config.CollectionName).Where("id", reindexer.ANY, addChilds).Set("ParentId", id).Update()
+	}(secondWg)
+	go func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id).Set("ChildList", inputChilds).Update()
+	}(secondWg)
+
+	secondWg.Wait()
 	return nil
 }
 
