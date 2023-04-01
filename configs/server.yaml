@@ -4,3 +4,4 @@ dbhost: "172.28.0.2"
 dbport: "6534"
 dbname: "testdb"
 collectionname: "documents"
+nestinglevel: 2

@@ -1,6 +1,9 @@
 package server
 
-import "os"
+import (
+	"os"
+	"strconv"
+)
 
 type Config struct {
 	ApiHost        string `yaml:"apihost"`
@@ -9,6 +12,7 @@ type Config struct {
 	DbPort         string `yaml:"port"`
 	DBname         string `yaml:"dbname"`
 	CollectionName string `yaml:"collectionname"`
+	NestingLevel   int    `yaml:"nestinglevel"`
 }
 
 func NewConfig() *Config {
@@ -19,6 +23,7 @@ func NewConfig() *Config {
 		DbPort:         getEnv("DB_PORT", "6534"),
 		DBname:         getEnv("DB_NAME", "testdb"),
 		CollectionName: getEnv("COLLECTION_NAME", "documents"),
+		NestingLevel:   func() int { value, _ := strconv.Atoi(getEnv("NESTING_LEVEL", "2")); return value }(),
 	}
 }
 
