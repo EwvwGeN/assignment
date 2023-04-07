@@ -16,10 +16,11 @@ import (
 )
 
 var (
-	NullId           = errors.New("Missing Id")
-	DocumentNotExist = errors.New("Document doesnt exist")
-	DeplthLevel      = errors.New("Nesting level is higher than allowed")
-	InvalidRequest   = errors.New("Invalid request")
+	NullId             = errors.New("Missing Id")
+	DocumentNotExist   = errors.New("Document doesnt exist")
+	DocumentHaveParent = errors.New("Document already have parent")
+	DeplthLevel        = errors.New("Nesting level is higher than allowed")
+	InvalidRequest     = errors.New("Invalid request")
 )
 
 type Server struct {
@@ -56,7 +57,7 @@ func (server *Server) configureRouter() {
 	simpleDocGroupe := server.router.Group("/doc")
 	{
 		simpleDocGroupe.GET("/all", server.getAllDocs())
-		simpleDocGroupe.GET("/id=:id", server.getDocById)
+		simpleDocGroupe.GET("/id=:id", server.getDocById())
 		simpleDocGroupe.POST("", server.createDoc())
 		simpleDocGroupe.PUT("", server.updateDoc())
 		simpleDocGroupe.DELETE("/id=:id", server.deleteDoc())
@@ -74,8 +75,24 @@ func (server *Server) createDoc() gin.HandlerFunc {
 		jsonStr, _ := json.Marshal(jsonData)
 		var newDocument models.Document
 		json.Unmarshal(jsonStr, &newDocument)
+		childs := []int64{}
+		if jsonData["ChildList"] != nil {
+			childs = arrAnyToInt64(jsonData["ChildList"].([]interface{}))
+			newDocument.ChildList = nil
+		}
+		if err := server.checkChild(0, childs); err != nil {
+			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
+			return
+		}
 		server.db.Insert(server.config.CollectionName, &newDocument, "id=serial()")
-		ctx.IndentedJSON(http.StatusOK, newDocument)
+		jsonData["Id"] = newDocument.Id
+		if err := server.updateChild(jsonData); err != nil {
+			ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
+			return
+		}
+		doc, _ := server.findDoc(newDocument.Id)
+		createdDoc := doc.(*models.Document)
+		ctx.IndentedJSON(http.StatusOK, createdDoc)
 	})
 }
 
@@ -91,14 +108,12 @@ func (server *Server) getAllDocs() gin.HandlerFunc {
 	}
 }
 
-func (server *Server) getDocById(ctx *gin.Context) {
-	id := ctx.Param("id")
-	doc, found := server.findDoc(id)
-	if !found {
-		ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("%s: File Id:%s", DocumentNotExist.Error(), id)})
-		return
-	}
-	ctx.IndentedJSON(http.StatusOK, doc)
+func (server *Server) getDocById() gin.HandlerFunc {
+	return server.checkExist(func(ctx *gin.Context) {
+		id := ctx.GetString("id")
+		doc, _ := server.findDoc(id)
+		ctx.IndentedJSON(http.StatusOK, doc)
+	})
 }
 
 func (server *Server) updateDoc() gin.HandlerFunc {
@@ -130,44 +145,14 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	if jsonData["ChildList"] == nil {
 		return nil
 	}
-	var docHeight int
-	id := int64(jsonData["Id"].(float64))
+	id := jsonData["Id"].(int64)
 	interfaceDoc, _ := server.findDoc(id)
 	doc := interfaceDoc.(*models.Document)
 	docChilds := doc.ChildList
-	inputChilds := func(in []interface{}) (out []int64) {
-		out = make([]int64, 0, len(in))
-		for _, v := range in {
-			out = append(out, int64(v.(float64)))
-		}
-		return
-	}(jsonData["ChildList"].([]interface{}))
-
+	inputChilds := arrAnyToInt64(jsonData["ChildList"].([]interface{}))
 	delChilds, addChilds := Difference(docChilds, inputChilds)
-	height, err := server.getDocHeight(id)
-	if err != nil {
-		return err
-	}
-	docHeight = height.(int)
-
-	eg := &errgroup.Group{}
-	for _, value := range addChilds {
-		id := value
-		eg.Go(func() error {
-			doc, found := server.findDoc(id)
-			if !found {
-				return fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), id)
-			}
-			depth := doc.(*models.Document).Depth
-			if depth+docHeight+1 > server.config.NestingLevel {
-				return fmt.Errorf("%s: File Id:%d", DeplthLevel.Error(), id)
-			}
-			return nil
-		})
-	}
-	if err := eg.Wait(); err != nil {
-		fmt.Println(err)
-		return err
+	if err := server.checkChild(id, addChilds); err != nil {
+		return fmt.Errorf("Can not add childs: %w", err)
 	}
 
 	firstWg := new(sync.WaitGroup)
@@ -185,7 +170,7 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	secondWg.Add(3)
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		query := server.db.Query(server.config.CollectionName).Where("id", reindexer.ANY, inputChilds)
+		query := server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, inputChilds...)
 		query.AggregateMax("Depth")
 		iterator := query.Exec()
 		maxChildDepth := int(iterator.AggResults()[0].Value)
@@ -206,7 +191,7 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		server.db.Query(server.config.CollectionName).Where("id", reindexer.ANY, addChilds).Set("ParentId", id).Update()
+		server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, addChilds...).Set("ParentId", id).Update()
 	}(secondWg)
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
@@ -217,8 +202,43 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	return nil
 }
 
+func (server *Server) checkChild(id int64, child []int64) error {
+	height, err := server.getDocHeight(id)
+	if err != nil {
+		return err
+	}
+	docHeight := height.(int)
+	eg := &errgroup.Group{}
+	for _, value := range child {
+		id := value
+		eg.Go(func() error {
+			doc, found := server.findDoc(id)
+			if !found {
+				return fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), id)
+			}
+			buffer := doc.(*models.Document)
+			parentId := buffer.ParentId
+			if parentId != 0 {
+				return fmt.Errorf("%s: File Id:%d", DocumentHaveParent.Error(), id)
+			}
+			depth := buffer.Depth
+			if depth+docHeight+1 > server.config.NestingLevel {
+				return fmt.Errorf("%s: File Id:%d", DeplthLevel.Error(), id)
+			}
+			return nil
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (server *Server) getDocHeight(id interface{}) (interface{}, error) {
 	var currentHight int
+	if id.(int64) == 0 {
+		return 0, nil
+	}
 	doc, found := server.findDoc(id)
 	if !found {
 		return nil, fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), id)
@@ -275,7 +295,7 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 			checkPChild := parentChild
 			checkPDepth := ParentDoc.Depth
 			for checkPId != 0 {
-				query := server.db.Query(server.config.CollectionName).Where("id", reindexer.ANY, checkPChild)
+				query := server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, checkPChild...)
 				query.AggregateMax("Depth")
 				iterator := query.Exec()
 				maxChildDepth := int(iterator.AggResults()[0].Value)
@@ -316,7 +336,6 @@ func (server *Server) innerDelete(id interface{}) *models.Document {
 func (server *Server) findDoc(id interface{}) (interface{}, bool) {
 	query := server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id)
 	doc, found := query.Get()
-	fmt.Println(id, " ", doc)
 	return doc, found
 }
 

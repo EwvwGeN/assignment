@@ -30,3 +30,10 @@ func Difference[T any](a, b []T) (d, c []T) {
 	}
 	return a, b
 }
+func arrAnyToInt64(in []interface{}) (out []int64) {
+	out = make([]int64, 0, len(in))
+	for _, v := range in {
+		out = append(out, int64(v.(float64)))
+	}
+	return
+}
