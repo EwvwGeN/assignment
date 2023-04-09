@@ -26,7 +26,7 @@ func (server *Server) createDoc() gin.HandlerFunc {
 			newDocument.ChildList = nil
 		}
 		if err := server.checkChild(0, childs); err != nil {
-			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
+			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Can not create file: Can not add childs: %w", err).Error()})
 			return
 		}
 		server.db.Insert(server.config.CollectionName, &newDocument, "id=serial()")
