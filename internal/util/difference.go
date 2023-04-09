@@ -1,4 +1,4 @@
-package server
+package util
 
 import (
 	"sort"
@@ -29,11 +29,4 @@ func Difference[T any](a, b []T) (d, c []T) {
 		b = append(b[:sourceIndexB-index], b[sourceIndexB-index+1:]...)
 	}
 	return a, b
-}
-func arrAnyToInt64(in []interface{}) (out []int64) {
-	out = make([]int64, 0, len(in))
-	for _, v := range in {
-		out = append(out, int64(v.(float64)))
-	}
-	return
 }
