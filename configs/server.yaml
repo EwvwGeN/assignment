@@ -1,4 +1,7 @@
-host: "127.0.0.1"
-port: "6534"
+apihost: "0.0.0.0"
+apiport: "8080"
+dbhost: "172.28.0.2"
+dbport: "6534"
 dbname: "testdb"
 collectionname: "documents"
+nestinglevel: 2
