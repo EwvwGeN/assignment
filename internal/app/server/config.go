@@ -6,13 +6,13 @@ import (
 )
 
 type Config struct {
-	ApiHost        string `yaml:"apihost"`
-	APiPort        string `yaml:"apiport"`
-	DbHost         string `yaml:"host"`
-	DbPort         string `yaml:"port"`
-	DBname         string `yaml:"dbname"`
-	CollectionName string `yaml:"collectionname"`
-	NestingLevel   int    `yaml:"nestinglevel"`
+	ApiHost        string `yaml:"api_host"`
+	APiPort        string `yaml:"api_port"`
+	DbHost         string `yaml:"db_host"`
+	DbPort         string `yaml:"db_port"`
+	DBname         string `yaml:"db_name"`
+	CollectionName string `yaml:"collection_name"`
+	NestingLevel   int    `yaml:"nesting_level"`
 }
 
 func NewConfig() *Config {

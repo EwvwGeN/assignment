@@ -1,7 +1,7 @@
-apihost: "0.0.0.0"
-apiport: "8080"
-dbhost: "172.28.0.2"
-dbport: "6534"
-dbname: "testdb"
-collectionname: "documents"
-nestinglevel: 2
+api_host: "0.0.0.0"
+api_port: "8080"
+db_host: "172.28.0.2"
+db_port: "6534"
+db_name: "testdb"
+collection_name: "documents"
+nesting_level: 2
