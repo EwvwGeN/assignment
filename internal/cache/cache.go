@@ -150,7 +150,11 @@ func (cache *Cache) checkExist(id int64) bool {
 	return true
 }
 
-func (cache *Cache) addDocCache(doc *models.Document) {
+func (cache *Cache) AddDoc(doc *models.Document) {
+	cache.innerAddDoc(doc)
+}
+
+func (cache *Cache) innerAddDoc(doc *models.Document) {
 	id := doc.Id
 	cache.docsConroller[id] = &extDoc{
 		expiration: time.Now().Add(cache.lifeTime).UnixNano(),
@@ -158,7 +162,11 @@ func (cache *Cache) addDocCache(doc *models.Document) {
 	}
 }
 
-func (cache *Cache) delDocCahe(id int64) {
+func (cache *Cache) DelDoc(id int64) {
+	cache.innerDelDoc(id)
+}
+
+func (cache *Cache) innerDelDoc(id int64) {
 	if !cache.checkExist(id) {
 		return
 	}
@@ -167,7 +175,11 @@ func (cache *Cache) delDocCahe(id int64) {
 	delete(cache.docsConroller, id)
 }
 
-func (cache *Cache) getDocCache(id int64) *models.Document {
+func (cache *Cache) GetDoc(id int64) *models.Document {
+	return cache.innerGetDoc(id)
+}
+
+func (cache *Cache) innerGetDoc(id int64) *models.Document {
 	if !cache.checkExist(id) {
 		return nil
 	}
@@ -185,10 +197,14 @@ func (cache *Cache) getDocCache(id int64) *models.Document {
 	return buffer.doc
 }
 
-func (cache *Cache) updDocCache(doc *models.Document) {
+func (cache *Cache) UpdateDoc(doc *models.Document) {
+	cache.innerUpdateDoc(doc)
+}
+
+func (cache *Cache) innerUpdateDoc(doc *models.Document) {
 	id := doc.Id
 	if !cache.checkExist(id) {
-		cache.addDocCache(doc)
+		cache.innerAddDoc(doc)
 		return
 	}
 	for cache.state == awaitLock {
