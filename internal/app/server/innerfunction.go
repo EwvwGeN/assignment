@@ -16,7 +16,7 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	}
 	id := jsonData["Id"].(int64)
 	interfaceDoc, _ := server.findDoc(id)
-	doc := interfaceDoc.(*models.Document)
+	doc := interfaceDoc
 	docChilds := doc.ChildList
 	inputChilds := util.ArrToInt64(jsonData["ChildList"].([]interface{}))
 	delChilds, addChilds := util.Difference(docChilds, inputChilds)
@@ -53,7 +53,7 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 			server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, currentId).
 				Set("Depth", maxChildDepth+i).Update()
 			buffer, _ := server.findDoc(currentId)
-			currentDoc = buffer.(*models.Document)
+			currentDoc = buffer
 			currentId = currentDoc.ParentId
 		}
 	}(secondWg)
@@ -85,7 +85,7 @@ func (server *Server) checkChild(id int64, child []int64) error {
 			if !found {
 				return fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), id)
 			}
-			buffer := doc.(*models.Document)
+			buffer := doc
 			parentId := buffer.ParentId
 			if parentId != 0 {
 				return fmt.Errorf("%s: File Id:%d", DocumentHaveParent.Error(), id)
@@ -103,27 +103,27 @@ func (server *Server) checkChild(id int64, child []int64) error {
 	return nil
 }
 
-func (server *Server) getDocHeight(id interface{}) (interface{}, error) {
+func (server *Server) getDocHeight(id int64) (interface{}, error) {
 	var currentHight int
-	if id.(int64) == 0 {
+	if id == 0 {
 		return 0, nil
 	}
 	doc, found := server.findDoc(id)
 	if !found {
 		return nil, fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), id)
 	}
-	document := doc.(*models.Document)
+	document := doc
 	for document.ParentId != 0 {
 		currentHight++
 		doc, _ = server.findDoc(document.ParentId)
-		document = doc.(*models.Document)
+		document = doc
 	}
 	return currentHight, nil
 }
 
-func (server *Server) innerDelete(id interface{}) *models.Document {
+func (server *Server) innerDelete(id int64) *models.Document {
 	interfaceDoc, _ := server.findDoc(id)
-	doc := interfaceDoc.(*models.Document)
+	doc := interfaceDoc
 	if doc.ChildList != nil {
 		for _, value := range doc.ChildList {
 			server.innerDelete(value)
@@ -133,10 +133,25 @@ func (server *Server) innerDelete(id interface{}) *models.Document {
 	return doc
 }
 
-func (server *Server) findDoc(id interface{}) (interface{}, bool) {
+func (server *Server) findDoc(id int64) (*models.Document, bool) {
+	doc := server.getFromCache(id)
+	if doc != nil {
+		return doc, true
+	}
+	return server.getFromBD(id)
+}
+
+func (server *Server) getFromCache(id int64) *models.Document {
+	return server.cache.GetDoc(id)
+}
+
+func (server *Server) getFromBD(id int64) (*models.Document, bool) {
 	query := server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id)
 	doc, found := query.Get()
-	return doc, found
+	if !found {
+		return nil, found
+	}
+	return doc.(*models.Document), found
 }
 
 func (server *Server) bigDoc(input interface{}) models.BigDocument {

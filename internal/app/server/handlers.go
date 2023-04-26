@@ -36,7 +36,7 @@ func (server *Server) createDoc() gin.HandlerFunc {
 			return
 		}
 		doc, _ := server.findDoc(newDocument.Id)
-		createdDoc := doc.(*models.Document)
+		createdDoc := doc
 		ctx.IndentedJSON(http.StatusOK, createdDoc)
 	})
 }
@@ -66,7 +66,8 @@ func (server *Server) getAllBigDocs(ctx *gin.Context) {
 
 func (server *Server) getDocById() gin.HandlerFunc {
 	return server.checkExist(func(ctx *gin.Context) {
-		id := ctx.GetString("id")
+		id := ctx.GetInt64("id")
+		fmt.Println("handler", id)
 		doc, _ := server.findDoc(id)
 		ctx.IndentedJSON(http.StatusOK, doc)
 	})
@@ -76,7 +77,7 @@ func (server *Server) updateDoc() gin.HandlerFunc {
 	return server.checkJson(server.checkExist(func(ctx *gin.Context) {
 		var document models.AllowedField
 		var jsonData map[string]interface{}
-		id := ctx.GetString("id")
+		id := ctx.GetInt64("id")
 		jsonData = ctx.GetStringMap("data")
 
 		if err := server.updateChild(jsonData); err != nil {
@@ -107,10 +108,11 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 		go func(upperWg *sync.WaitGroup) {
 			defer upperWg.Done()
 			wg := new(sync.WaitGroup)
-			childs, _ := jsonData["ChildList"].([]interface{})
+			buffer, _ := jsonData["ChildList"].([]interface{})
+			childs := util.ArrToInt64(buffer)
 			wg.Add(len(childs))
 			for _, value := range childs {
-				go func(wg *sync.WaitGroup, id interface{}) {
+				go func(wg *sync.WaitGroup, id int64) {
 					defer wg.Done()
 					server.innerDelete(id)
 				}(wg, value)
@@ -126,7 +128,7 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 				return
 			}
 			interfaceParentDoc, _ := server.findDoc(parentId)
-			ParentDoc := interfaceParentDoc.(*models.Document)
+			ParentDoc := interfaceParentDoc
 			parentChild := func() []int64 {
 				buffer := ParentDoc.ChildList
 				for i, value := range buffer {
@@ -151,7 +153,7 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 				server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, checkPId).
 					Set("Depth", maxChildDepth+1).Update()
 				bufferCheckDoc, _ := server.findDoc(checkPId)
-				checkDoc := bufferCheckDoc.(*models.Document)
+				checkDoc := bufferCheckDoc
 				checkPId = checkDoc.ParentId
 				checkPChild = checkDoc.ChildList
 				checkPDepth = checkDoc.Depth

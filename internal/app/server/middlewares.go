@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strconv"
 
 	"github.com/EwvwGeN/assignment/internal/models"
 	"github.com/gin-gonic/gin"
@@ -38,19 +39,20 @@ func (server *Server) checkExist(next gin.HandlerFunc) gin.HandlerFunc {
 			}
 			id = fmt.Sprintf("%.f", jsonData["Id"].(float64))
 		}
-
-		doc, found := server.findDoc(id)
+		buffer, _ := strconv.Atoi(id)
+		docId := int64(buffer)
+		doc, found := server.findDoc(docId)
 		if !found {
 			ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": DocumentNotExist.Error()})
 			return
 		}
 		if jsonData == nil {
-			document = doc.(*models.Document)
+			document = doc
 			jsonByte, _ := json.Marshal(document)
 			json.Unmarshal(jsonByte, &jsonData)
 		}
 		ctx.Set("data", jsonData)
-		ctx.Set("id", id)
+		ctx.Set("id", docId)
 		next(ctx)
 	}
 }
