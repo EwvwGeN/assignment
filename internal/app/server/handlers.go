@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
-	"strconv"
 	"sync"
 
 	"github.com/EwvwGeN/assignment/internal/models"
@@ -101,7 +100,7 @@ func (server *Server) updateDoc() gin.HandlerFunc {
 func (server *Server) deleteDoc() gin.HandlerFunc {
 	return server.checkExist(func(ctx *gin.Context) {
 		var jsonData map[string]interface{}
-		id, _ := strconv.ParseInt(ctx.GetString("id"), 10, 64)
+		id := ctx.GetInt64("id")
 		jsonData = ctx.GetStringMap("data")
 		upperWg := new(sync.WaitGroup)
 		upperWg.Add(2)
@@ -123,44 +122,27 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 		go func(upperWg *sync.WaitGroup) {
 			defer upperWg.Done()
 			parentId := int64(jsonData["ParentId"].(float64))
-			if parentId == 0 {
-				server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id).Delete()
-				return
-			}
-			interfaceParentDoc, _ := server.findDoc(parentId)
-			ParentDoc := interfaceParentDoc
-			parentChild := func() []int64 {
-				buffer := ParentDoc.ChildList
-				for i, value := range buffer {
-					if value == id {
-						return append(buffer[:i], buffer[i+1:]...)
+			if parentId != 0 {
+				parentDoc, _ := server.findDoc(parentId)
+				parentChild := func() []int64 {
+					buffer := parentDoc.ChildList
+					for i, value := range buffer {
+						if value == id {
+							return append(buffer[:i], buffer[i+1:]...)
+						}
 					}
+					return nil
+				}()
+				fmt.Println(parentDoc, parentChild, id)
+				if parentChild != nil {
+					server.updateDepth(parentDoc, parentChild)
+
+					server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, parentId).
+						Set("ChildList", parentChild).Update()
 				}
-				return nil
-			}()
-			checkPId := parentId
-			checkPChild := parentChild
-			checkPDepth := ParentDoc.Depth
-			for checkPId != 0 {
-				query := server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, checkPChild...)
-				query.AggregateMax("Depth")
-				iterator := query.Exec()
-				maxChildDepth := int(iterator.AggResults()[0].Value)
-				iterator.Close()
-				if maxChildDepth+1 == checkPDepth {
-					break
-				}
-				server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, checkPId).
-					Set("Depth", maxChildDepth+1).Update()
-				bufferCheckDoc, _ := server.findDoc(checkPId)
-				checkDoc := bufferCheckDoc
-				checkPId = checkDoc.ParentId
-				checkPChild = checkDoc.ChildList
-				checkPDepth = checkDoc.Depth
 			}
 
-			server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, parentId).
-				Set("ChildList", parentChild).Update()
+			server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id).Delete()
 		}(upperWg)
 
 		upperWg.Wait()

@@ -14,9 +14,8 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	if jsonData["ChildList"] == nil {
 		return nil
 	}
-	id := jsonData["Id"].(int64)
-	interfaceDoc, _ := server.findDoc(id)
-	doc := interfaceDoc
+	id := int64(jsonData["Id"].(float64))
+	doc, _ := server.findDoc(id)
 	docChilds := doc.ChildList
 	inputChilds := util.ArrToInt64(jsonData["ChildList"].([]interface{}))
 	delChilds, addChilds := util.Difference(docChilds, inputChilds)
@@ -39,23 +38,7 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	secondWg.Add(3)
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		query := server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, inputChilds...)
-		query.AggregateMax("Depth")
-		iterator := query.Exec()
-		maxChildDepth := int(iterator.AggResults()[0].Value)
-		iterator.Close()
-		currentId := id
-		currentDoc := doc
-		for i := 1; currentId != 0; i++ {
-			if currentDoc.Depth == maxChildDepth+i {
-				break
-			}
-			server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, currentId).
-				Set("Depth", maxChildDepth+i).Update()
-			buffer, _ := server.findDoc(currentId)
-			currentDoc = buffer
-			currentId = currentDoc.ParentId
-		}
+		server.updateDepth(doc, inputChilds)
 	}(secondWg)
 
 	go func(wg *sync.WaitGroup) {
@@ -164,4 +147,33 @@ func (server *Server) bigDoc(input interface{}) models.BigDocument {
 		bigDoc.ChildList = append(bigDoc.ChildList, server.bigDoc(childDoc))
 	}
 	return bigDoc
+}
+
+func (server *Server) updateDepth(document *models.Document, newChilds []int64) {
+	doc := document
+	id := doc.Id
+	childs := newChilds
+	depth := doc.Depth
+	for id != 0 {
+		query := server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, childs...)
+		query.AggregateMax("Depth")
+		iterator := query.Exec()
+		maxChildDepth := -1
+		if len(iterator.AggResults()) != 0 {
+			maxChildDepth = int(iterator.AggResults()[0].Value)
+		}
+		iterator.Close()
+		if maxChildDepth+1 == depth {
+			break
+		}
+		server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id).
+			Set("Depth", maxChildDepth+1).Update()
+		id = doc.ParentId
+		parentDoc, _ := server.findDoc(id)
+		if parentDoc == nil {
+			return
+		}
+		childs = parentDoc.ChildList
+		depth = parentDoc.Depth
+	}
 }
