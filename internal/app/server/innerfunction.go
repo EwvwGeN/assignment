@@ -30,7 +30,6 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 			defer wg.Done()
 			server.innerDelete(childId)
 		}(firstWg, childId)
-		server.innerDelete(childId)
 	}
 	firstWg.Wait()
 
