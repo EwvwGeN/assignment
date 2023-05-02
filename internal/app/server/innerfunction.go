@@ -105,15 +105,32 @@ func (server *Server) getDocHeight(id int64) (interface{}, error) {
 }
 
 func (server *Server) innerDelete(id int64) *models.Document {
-	interfaceDoc, _ := server.findDoc(id)
-	doc := interfaceDoc
+	doc, _ := server.findDoc(id)
 	if doc.ChildList != nil {
 		for _, value := range doc.ChildList {
 			server.innerDelete(value)
 		}
 	}
-	server.db.Delete(server.config.CollectionName, doc)
+	wg := new(sync.WaitGroup)
+	wg.Add(2)
+	go func(wg *sync.WaitGroup) {
+		server.delFromCache(id)
+		wg.Done()
+	}(wg)
+	go func(wg *sync.WaitGroup) {
+		server.delFromDB(id)
+		wg.Done()
+	}(wg)
+	wg.Wait()
 	return doc
+}
+
+func (server *Server) delFromCache(id int64) {
+	server.cache.DelDoc(id)
+}
+
+func (server *Server) delFromDB(id int64) {
+	server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id).Delete()
 }
 
 func (server *Server) findDoc(id int64) (*models.Document, bool) {
