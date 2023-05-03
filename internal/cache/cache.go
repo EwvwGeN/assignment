@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/EwvwGeN/assignment/internal/models"
+	"github.com/EwvwGeN/assignment/internal/util"
 )
 
 type status int
@@ -197,21 +198,21 @@ func (cache *Cache) innerGetDoc(id int64) *models.Document {
 	return buffer.doc
 }
 
-func (cache *Cache) UpdateDoc(doc *models.Document) {
-	cache.innerUpdateDoc(doc)
+func (cache *Cache) UpdateDoc(id int64, updFields map[string]interface{}) {
+	cache.innerUpdateDoc(id, updFields)
 }
 
-func (cache *Cache) innerUpdateDoc(doc *models.Document) {
-	id := doc.Id
+func (cache *Cache) innerUpdateDoc(id int64, updFields map[string]interface{}) {
 	if !cache.checkExist(id) {
-		cache.innerAddDoc(doc)
 		return
 	}
 	for cache.state == awaitLock {
 	}
 	cache.innerAction <- startWork
 	cache.docsConroller[id].RLock()
-	cache.docsConroller[id].doc = doc
+	for field, value := range updFields {
+		util.SetValueByName(cache.docsConroller[id].doc, field, value)
+	}
 	cache.docsConroller[id].expiration = time.Now().Add(cache.lifeTime).UnixNano()
 	cache.docsConroller[id].RUnlock()
 	cache.innerAction <- cancelWork
