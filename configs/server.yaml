@@ -5,3 +5,5 @@ db_port: "6534"
 db_name: "testdb"
 collection_name: "documents"
 nesting_level: 2
+cache_life_time_min: 15
+cache_cleaning_interval_min: 10

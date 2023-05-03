@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/EwvwGeN/assignment/internal/models"
@@ -14,9 +15,8 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	if jsonData["ChildList"] == nil {
 		return nil
 	}
-	id := jsonData["Id"].(int64)
-	interfaceDoc, _ := server.findDoc(id)
-	doc := interfaceDoc.(*models.Document)
+	id := int64(jsonData["Id"].(float64))
+	doc, _ := server.findDoc(id)
 	docChilds := doc.ChildList
 	inputChilds := util.ArrToInt64(jsonData["ChildList"].([]interface{}))
 	delChilds, addChilds := util.Difference(docChilds, inputChilds)
@@ -31,7 +31,6 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 			defer wg.Done()
 			server.innerDelete(childId)
 		}(firstWg, childId)
-		server.innerDelete(childId)
 	}
 	firstWg.Wait()
 
@@ -39,23 +38,7 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	secondWg.Add(3)
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		query := server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, inputChilds...)
-		query.AggregateMax("Depth")
-		iterator := query.Exec()
-		maxChildDepth := int(iterator.AggResults()[0].Value)
-		iterator.Close()
-		currentId := id
-		currentDoc := doc
-		for i := 1; currentId != 0; i++ {
-			if currentDoc.Depth == maxChildDepth+i {
-				break
-			}
-			server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, currentId).
-				Set("Depth", maxChildDepth+i).Update()
-			buffer, _ := server.findDoc(currentId)
-			currentDoc = buffer.(*models.Document)
-			currentId = currentDoc.ParentId
-		}
+		server.updateDepth(doc, inputChilds)
 	}(secondWg)
 
 	go func(wg *sync.WaitGroup) {
@@ -85,7 +68,7 @@ func (server *Server) checkChild(id int64, child []int64) error {
 			if !found {
 				return fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), id)
 			}
-			buffer := doc.(*models.Document)
+			buffer := doc
 			parentId := buffer.ParentId
 			if parentId != 0 {
 				return fmt.Errorf("%s: File Id:%d", DocumentHaveParent.Error(), id)
@@ -103,40 +86,74 @@ func (server *Server) checkChild(id int64, child []int64) error {
 	return nil
 }
 
-func (server *Server) getDocHeight(id interface{}) (interface{}, error) {
+func (server *Server) getDocHeight(id int64) (interface{}, error) {
 	var currentHight int
-	if id.(int64) == 0 {
+	if id == 0 {
 		return 0, nil
 	}
 	doc, found := server.findDoc(id)
 	if !found {
 		return nil, fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), id)
 	}
-	document := doc.(*models.Document)
+	document := doc
 	for document.ParentId != 0 {
 		currentHight++
 		doc, _ = server.findDoc(document.ParentId)
-		document = doc.(*models.Document)
+		document = doc
 	}
 	return currentHight, nil
 }
 
-func (server *Server) innerDelete(id interface{}) *models.Document {
-	interfaceDoc, _ := server.findDoc(id)
-	doc := interfaceDoc.(*models.Document)
+func (server *Server) innerDelete(id int64) *models.Document {
+	doc, _ := server.findDoc(id)
 	if doc.ChildList != nil {
 		for _, value := range doc.ChildList {
 			server.innerDelete(value)
 		}
 	}
-	server.db.Delete(server.config.CollectionName, doc)
+	wg := new(sync.WaitGroup)
+	wg.Add(2)
+	go func(wg *sync.WaitGroup) {
+		server.delFromCache(id)
+		wg.Done()
+	}(wg)
+	go func(wg *sync.WaitGroup) {
+		server.delFromDB(id)
+		wg.Done()
+	}(wg)
+	wg.Wait()
 	return doc
 }
 
-func (server *Server) findDoc(id interface{}) (interface{}, bool) {
+func (server *Server) delFromCache(id int64) {
+	server.cache.DelDoc(id)
+}
+
+func (server *Server) delFromDB(id int64) {
+	server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id).Delete()
+}
+
+func (server *Server) findDoc(id int64) (*models.Document, bool) {
+	doc := server.getFromCache(id)
+	if doc != nil {
+		return doc, true
+	}
+	doc, found := server.getFromBD(id)
+	server.cache.AddDoc(doc)
+	return doc, found
+}
+
+func (server *Server) getFromCache(id int64) *models.Document {
+	return server.cache.GetDoc(id)
+}
+
+func (server *Server) getFromBD(id int64) (*models.Document, bool) {
 	query := server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id)
 	doc, found := query.Get()
-	return doc, found
+	if !found {
+		return nil, found
+	}
+	return doc.(*models.Document), found
 }
 
 func (server *Server) bigDoc(input interface{}) models.BigDocument {
@@ -149,4 +166,57 @@ func (server *Server) bigDoc(input interface{}) models.BigDocument {
 		bigDoc.ChildList = append(bigDoc.ChildList, server.bigDoc(childDoc))
 	}
 	return bigDoc
+}
+
+func (server *Server) updateDepth(document *models.Document, newChilds []int64) {
+	doc := document
+	id := doc.Id
+	childs := newChilds
+	depth := doc.Depth
+	for id != 0 {
+		query := server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, childs...)
+		query.AggregateMax("Depth")
+		iterator := query.Exec()
+		maxChildDepth := -1
+		if len(iterator.AggResults()) != 0 {
+			maxChildDepth = int(iterator.AggResults()[0].Value)
+		}
+		iterator.Close()
+		if maxChildDepth+1 == depth {
+			break
+		}
+		server.updateDocFields(id, map[string]interface{}{
+			"Depth": maxChildDepth + 1,
+		})
+		id = doc.ParentId
+		parentDoc, _ := server.findDoc(id)
+		if parentDoc == nil {
+			return
+		}
+		childs = parentDoc.ChildList
+		depth = parentDoc.Depth
+	}
+}
+
+func (server *Server) updateDocFields(id int64, jsonData map[string]interface{}) error {
+	changedFields := make(map[string]interface{})
+	var document models.AllowedField
+	tx, err := server.db.BeginTx(server.config.CollectionName)
+	if err != nil {
+		return err
+	}
+	query := tx.Query().WhereInt64("id", reindexer.EQ, id)
+	types := reflect.TypeOf(document)
+	for key, value := range jsonData {
+		if field, exist := types.FieldByName(key); exist {
+			query.Set(field.Name, value)
+			changedFields[field.Name] = value
+		}
+	}
+	query.Update()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	go server.cache.UpdateDoc(id, changedFields)
+	return nil
 }

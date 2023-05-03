@@ -3,7 +3,9 @@ package server
 import (
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/EwvwGeN/assignment/internal/cache"
 	"github.com/EwvwGeN/assignment/internal/models"
 	"github.com/gin-gonic/gin"
 	"github.com/restream/reindexer"
@@ -20,6 +22,7 @@ var (
 type Server struct {
 	router *gin.Engine
 	config *Config
+	cache  *cache.Cache
 	db     *reindexer.Reindexer
 }
 
@@ -29,6 +32,7 @@ func NewServer(config *Config) *Server {
 	return &Server{
 		router: gin.Default(),
 		config: config,
+		cache:  cache.NewCache(time.Duration(config.CachelifeTime)*time.Minute, time.Duration(config.CacheCleaningInterval)*time.Minute),
 		db:     DbConn,
 	}
 }
