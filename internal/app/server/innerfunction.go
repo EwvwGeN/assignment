@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/EwvwGeN/assignment/internal/models"
@@ -137,7 +138,9 @@ func (server *Server) findDoc(id int64) (*models.Document, bool) {
 	if doc != nil {
 		return doc, true
 	}
-	return server.getFromBD(id)
+	doc, found := server.getFromBD(id)
+	server.cache.AddDoc(doc)
+	return doc, found
 }
 
 func (server *Server) getFromCache(id int64) *models.Document {
@@ -182,8 +185,9 @@ func (server *Server) updateDepth(document *models.Document, newChilds []int64) 
 		if maxChildDepth+1 == depth {
 			break
 		}
-		server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id).
-			Set("Depth", maxChildDepth+1).Update()
+		server.updateDocFields(id, map[string]interface{}{
+			"Depth": maxChildDepth + 1,
+		})
 		id = doc.ParentId
 		parentDoc, _ := server.findDoc(id)
 		if parentDoc == nil {
@@ -192,4 +196,27 @@ func (server *Server) updateDepth(document *models.Document, newChilds []int64) 
 		childs = parentDoc.ChildList
 		depth = parentDoc.Depth
 	}
+}
+
+func (server *Server) updateDocFields(id int64, jsonData map[string]interface{}) error {
+	changedFields := make(map[string]interface{})
+	var document models.AllowedField
+	tx, err := server.db.BeginTx(server.config.CollectionName)
+	if err != nil {
+		return err
+	}
+	query := tx.Query().WhereInt64("id", reindexer.EQ, id)
+	types := reflect.TypeOf(document)
+	for key, value := range jsonData {
+		if field, exist := types.FieldByName(key); exist {
+			query.Set(field.Name, value)
+			changedFields[field.Name] = value
+		}
+	}
+	query.Update()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	go server.cache.UpdateDoc(id, changedFields)
+	return nil
 }

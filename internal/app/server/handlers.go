@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"reflect"
 	"sync"
 
 	"github.com/EwvwGeN/assignment/internal/models"
@@ -35,8 +34,7 @@ func (server *Server) createDoc() gin.HandlerFunc {
 			return
 		}
 		doc, _ := server.findDoc(newDocument.Id)
-		createdDoc := doc
-		ctx.IndentedJSON(http.StatusOK, createdDoc)
+		ctx.IndentedJSON(http.StatusOK, doc)
 	})
 }
 
@@ -66,7 +64,6 @@ func (server *Server) getAllBigDocs(ctx *gin.Context) {
 func (server *Server) getDocById() gin.HandlerFunc {
 	return server.checkExist(func(ctx *gin.Context) {
 		id := ctx.GetInt64("id")
-		fmt.Println("handler", id)
 		doc, _ := server.findDoc(id)
 		ctx.IndentedJSON(http.StatusOK, doc)
 	})
@@ -74,7 +71,6 @@ func (server *Server) getDocById() gin.HandlerFunc {
 
 func (server *Server) updateDoc() gin.HandlerFunc {
 	return server.checkJson(server.checkExist(func(ctx *gin.Context) {
-		var document models.AllowedField
 		var jsonData map[string]interface{}
 		id := ctx.GetInt64("id")
 		jsonData = ctx.GetStringMap("data")
@@ -84,15 +80,10 @@ func (server *Server) updateDoc() gin.HandlerFunc {
 			return
 		}
 
-		query := server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id)
-		types := reflect.TypeOf(document)
-		for key, value := range jsonData {
-			if field, exist := types.FieldByName(key); exist {
-				query.Set(field.Name, value)
-			}
+		if err := server.updateDocFields(id, jsonData); err != nil {
+			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
-		query.Update()
-
 		ctx.IndentedJSON(http.StatusOK, gin.H{"message": "ok"})
 	}))
 }
@@ -136,13 +127,13 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 				fmt.Println(parentDoc, parentChild, id)
 				if parentChild != nil {
 					server.updateDepth(parentDoc, parentChild)
-
-					server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, parentId).
-						Set("ChildList", parentChild).Update()
+					server.updateDocFields(id, map[string]interface{}{
+						"ChildList": parentChild,
+					})
 				}
 			}
 
-			server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id).Delete()
+			server.innerDelete(id)
 		}(upperWg)
 
 		upperWg.Wait()
