@@ -33,6 +33,13 @@ func (server *Server) createDoc() gin.HandlerFunc {
 			ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
 			return
 		}
+		err := server.innerUpdateFields(newDocument.Id, map[string]interface{}{
+			"ChildList": childs,
+		})
+		if err != nil {
+			ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
+			return
+		}
 		doc, _ := server.findDoc(newDocument.Id)
 		ctx.IndentedJSON(http.StatusOK, doc)
 	})
@@ -74,7 +81,7 @@ func (server *Server) updateDoc() gin.HandlerFunc {
 		var jsonData map[string]interface{}
 		id := ctx.GetInt64("id")
 		jsonData = ctx.GetStringMap("data")
-
+		jsonData["Id"] = id
 		if err := server.updateChild(jsonData); err != nil {
 			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -124,13 +131,10 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 					}
 					return nil
 				}()
-				fmt.Println(parentDoc, parentChild, id)
-				if parentChild != nil {
-					server.updateDepth(parentDoc, parentChild)
-					server.updateDocFields(id, map[string]interface{}{
-						"ChildList": parentChild,
-					})
-				}
+				server.innerUpdateFields(parentId, map[string]interface{}{
+					"ChildList": parentChild,
+				})
+				server.updateDepth(parentDoc, parentChild)
 			}
 
 			server.innerDelete(id)

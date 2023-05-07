@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log"
 	"reflect"
 	"sync"
 
@@ -15,7 +16,7 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	if jsonData["ChildList"] == nil {
 		return nil
 	}
-	id := int64(jsonData["Id"].(float64))
+	id := jsonData["Id"].(int64)
 	doc, _ := server.findDoc(id)
 	docChilds := doc.ChildList
 	inputChilds := util.ArrToInt64(jsonData["ChildList"].([]interface{}))
@@ -35,7 +36,7 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	firstWg.Wait()
 
 	secondWg := new(sync.WaitGroup)
-	secondWg.Add(3)
+	secondWg.Add(2)
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		server.updateDepth(doc, inputChilds)
@@ -43,11 +44,14 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, addChilds...).Set("ParentId", id).Update()
-	}(secondWg)
-	go func(wg *sync.WaitGroup) {
-		defer wg.Done()
-		server.db.Query(server.config.CollectionName).Where("id", reindexer.EQ, id).Set("ChildList", inputChilds).Update()
+		for _, v := range addChilds {
+			err := server.innerUpdateFields(v, map[string]interface{}{
+				"ParentId": id,
+			})
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
 	}(secondWg)
 
 	secondWg.Wait()
@@ -139,7 +143,9 @@ func (server *Server) findDoc(id int64) (*models.Document, bool) {
 		return doc, true
 	}
 	doc, found := server.getFromBD(id)
-	server.cache.AddDoc(doc)
+	if found {
+		server.cache.AddDoc(doc)
+	}
 	return doc, found
 }
 
@@ -173,25 +179,32 @@ func (server *Server) updateDepth(document *models.Document, newChilds []int64) 
 	id := doc.Id
 	childs := newChilds
 	depth := doc.Depth
+	maxChildDepth := -1
 	for id != 0 {
-		query := server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, childs...)
-		query.AggregateMax("Depth")
-		iterator := query.Exec()
-		maxChildDepth := -1
-		if len(iterator.AggResults()) != 0 {
-			maxChildDepth = int(iterator.AggResults()[0].Value)
+		fmt.Println("enter in updateDepth ", id, "'if' is ", len(newChilds) != 0)
+		if len(childs) != 0 {
+			query := server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, childs...)
+			query.AggregateMax("Depth")
+			iterator := query.Exec()
+
+			if len(iterator.AggResults()) != 0 {
+				maxChildDepth = int(iterator.AggResults()[0].Value)
+			}
+			iterator.Close()
 		}
-		iterator.Close()
 		if maxChildDepth+1 == depth {
 			break
 		}
-		server.updateDocFields(id, map[string]interface{}{
+		err := server.innerUpdateFields(id, map[string]interface{}{
 			"Depth": maxChildDepth + 1,
 		})
+		if err != nil {
+			log.Fatalln(err)
+		}
 		id = doc.ParentId
-		parentDoc, _ := server.findDoc(id)
-		if parentDoc == nil {
-			return
+		parentDoc, found := server.findDoc(id)
+		if !found {
+			break
 		}
 		childs = parentDoc.ChildList
 		depth = parentDoc.Depth
@@ -199,8 +212,20 @@ func (server *Server) updateDepth(document *models.Document, newChilds []int64) 
 }
 
 func (server *Server) updateDocFields(id int64, jsonData map[string]interface{}) error {
+	fmt.Println(id, jsonData)
 	changedFields := make(map[string]interface{})
 	var document models.AllowedField
+	types := reflect.TypeOf(document)
+	for key, value := range jsonData {
+		if field, exist := types.FieldByName(key); exist {
+			changedFields[field.Name] = value
+		}
+	}
+	return server.innerUpdateFields(id, changedFields)
+}
+
+func (server *Server) innerUpdateFields(id int64, jsonData map[string]interface{}) error {
+	var document models.Document
 	tx, err := server.db.BeginTx(server.config.CollectionName)
 	if err != nil {
 		return err
@@ -208,15 +233,14 @@ func (server *Server) updateDocFields(id int64, jsonData map[string]interface{})
 	query := tx.Query().WhereInt64("id", reindexer.EQ, id)
 	types := reflect.TypeOf(document)
 	for key, value := range jsonData {
-		if field, exist := types.FieldByName(key); exist {
-			query.Set(field.Name, value)
-			changedFields[field.Name] = value
-		}
+		field, _ := types.FieldByName(key)
+		fmt.Println("edit Field:", field, "with value", value)
+		query.Set(field.Name, value)
 	}
 	query.Update()
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	go server.cache.UpdateDoc(id, changedFields)
+	go server.cache.UpdateDoc(id, jsonData)
 	return nil
 }
