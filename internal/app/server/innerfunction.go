@@ -20,7 +20,9 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	doc, _ := server.findDoc(id)
 	docChilds := doc.ChildList
 	inputChilds := util.ArrToInt64(jsonData["ChildList"].([]interface{}))
+	// Splitting the list of child documents into a list for deletion and addition
 	delChilds, addChilds := util.Difference(docChilds, inputChilds)
+	// Сhecking new documents for the possibility to add them
 	if err := server.checkChild(id, addChilds); err != nil {
 		return fmt.Errorf("Can not add childs: %w", err)
 	}
@@ -181,7 +183,6 @@ func (server *Server) updateDepth(document *models.Document, newChilds []int64) 
 	depth := doc.Depth
 	maxChildDepth := -1
 	for id != 0 {
-		fmt.Println("enter in updateDepth ", id, "'if' is ", len(newChilds) != 0)
 		if len(childs) != 0 {
 			query := server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, childs...)
 			query.AggregateMax("Depth")
@@ -212,10 +213,10 @@ func (server *Server) updateDepth(document *models.Document, newChilds []int64) 
 }
 
 func (server *Server) updateDocFields(id int64, jsonData map[string]interface{}) error {
-	fmt.Println(id, jsonData)
 	changedFields := make(map[string]interface{})
 	var document models.AllowedField
 	types := reflect.TypeOf(document)
+	// Checking the fields for the possibility of changing and saving them in the map
 	for key, value := range jsonData {
 		if field, exist := types.FieldByName(key); exist {
 			changedFields[field.Name] = value
@@ -224,6 +225,7 @@ func (server *Server) updateDocFields(id int64, jsonData map[string]interface{})
 	return server.innerUpdateFields(id, changedFields)
 }
 
+// Updating document fields in a transaction and updating them in the cache if successful
 func (server *Server) innerUpdateFields(id int64, jsonData map[string]interface{}) error {
 	var document models.Document
 	tx, err := server.db.BeginTx(server.config.CollectionName)
@@ -234,7 +236,6 @@ func (server *Server) innerUpdateFields(id int64, jsonData map[string]interface{
 	types := reflect.TypeOf(document)
 	for key, value := range jsonData {
 		field, _ := types.FieldByName(key)
-		fmt.Println("edit Field:", field, "with value", value)
 		query.Set(field.Name, value)
 	}
 	query.Update()

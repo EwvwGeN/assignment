@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// Variables for config management
 var (
 	isConfig   bool
 	configPath string
@@ -30,6 +31,7 @@ func main() {
 func getConfig() *server.Config {
 	godotenv.Load()
 	config := server.NewConfig()
+	// If the "-c" attribute was received, we return the standard config
 	if !isConfig {
 		return config
 	}
@@ -38,6 +40,7 @@ func getConfig() *server.Config {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// Adding the config fields from the file
 	err = yaml.Unmarshal(file, config)
 	if err != nil {
 		log.Fatal(err)

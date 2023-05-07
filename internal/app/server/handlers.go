@@ -19,20 +19,25 @@ func (server *Server) createDoc() gin.HandlerFunc {
 		var newDocument models.Document
 		json.Unmarshal(jsonStr, &newDocument)
 		childs := []int64{}
+		// If child documents are passed to json, we translate them into an array of ids
 		if jsonData["ChildList"] != nil {
 			childs = util.ArrToInt64(jsonData["ChildList"].([]interface{}))
 			newDocument.ChildList = nil
 		}
+		// Checking the possibility of using child documents
 		if err := server.checkChild(0, childs); err != nil {
 			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Can not create file: Can not add childs: %w", err).Error()})
 			return
 		}
 		server.db.Insert(server.config.CollectionName, &newDocument, "id=serial()")
+		// Writing to the json id of the created document
 		jsonData["Id"] = newDocument.Id
+		// Updating child documents of a document
 		if err := server.updateChild(jsonData); err != nil {
 			ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
 			return
 		}
+		// Updating the list of child documents
 		err := server.innerUpdateFields(newDocument.Id, map[string]interface{}{
 			"ChildList": childs,
 		})
@@ -40,6 +45,7 @@ func (server *Server) createDoc() gin.HandlerFunc {
 			ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
 			return
 		}
+		// Getting the document again to get all the changed fields and upload it to the cache
 		doc, _ := server.findDoc(newDocument.Id)
 		ctx.IndentedJSON(http.StatusOK, doc)
 	})
@@ -57,6 +63,8 @@ func (server *Server) getAllDocs() gin.HandlerFunc {
 	}
 }
 
+// Get all documents that do not have a parent and bring them to the structure of the document with
+// the expanded child elements
 func (server *Server) getAllBigDocs(ctx *gin.Context) {
 	query := server.db.Query(server.config.CollectionName).Where("parent_id", reindexer.EQ, 0)
 	iterator := query.Exec()
@@ -102,12 +110,14 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 		jsonData = ctx.GetStringMap("data")
 		upperWg := new(sync.WaitGroup)
 		upperWg.Add(2)
+		// Start two goroutine to delete the lower documents and update the upper ones
 		go func(upperWg *sync.WaitGroup) {
 			defer upperWg.Done()
 			wg := new(sync.WaitGroup)
 			buffer, _ := jsonData["ChildList"].([]interface{})
 			childs := util.ArrToInt64(buffer)
 			wg.Add(len(childs))
+			// Deleting all child documents
 			for _, value := range childs {
 				go func(wg *sync.WaitGroup, id int64) {
 					defer wg.Done()
@@ -122,6 +132,7 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 			parentId := int64(jsonData["ParentId"].(float64))
 			if parentId != 0 {
 				parentDoc, _ := server.findDoc(parentId)
+				// Deleting the current document from child documents of the parent
 				parentChild := func() []int64 {
 					buffer := parentDoc.ChildList
 					for i, value := range buffer {

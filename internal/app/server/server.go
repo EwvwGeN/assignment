@@ -26,6 +26,7 @@ type Server struct {
 	db     *reindexer.Reindexer
 }
 
+// Creating a connection and launching a cache
 func NewServer(config *Config) *Server {
 	DbConn := reindexer.NewReindex(
 		fmt.Sprintf("cproto://%s:%s/%s", config.DbHost, config.DbPort, config.DBname), reindexer.WithCreateDBIfMissing())

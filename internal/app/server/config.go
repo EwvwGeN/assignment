@@ -31,6 +31,7 @@ func NewConfig() *Config {
 	}
 }
 
+// Retrieves a variable from the environment
 func getEnv(envKey string, defaultVal string) string {
 	if value, exists := os.LookupEnv(envKey); exists {
 		return value

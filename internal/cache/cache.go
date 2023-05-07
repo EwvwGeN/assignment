@@ -10,12 +10,14 @@ import (
 
 type status int
 
+// Cache Statuses
 const (
 	unoccupied status = 0
 	working    status = 1
 	awaitLock  status = 2
 )
 
+// Values for checking cache usage
 const (
 	startWork  = 1
 	cancelWork = -1
@@ -48,6 +50,7 @@ func NewCache(lifeTime, cleaningInterval time.Duration) *Cache {
 		docsConroller:    make(map[int64]*extDoc),
 	}
 
+	// Starting the garbage collector at a non-zero cleaning time
 	if cleaningInterval > 0 {
 		go cache.garbageCollector()
 	}
@@ -58,8 +61,11 @@ func NewCache(lifeTime, cleaningInterval time.Duration) *Cache {
 }
 
 func (cache *Cache) controller() {
+	// List of channels waiting to be accessed to deleting
 	var chans []chan bool
+	// Channel for communication of the goroutine controller
 	cChan := make(chan bool)
+	// The goroutine is monitors the use of the cache and indicates its status
 	go func() {
 		usageCount := 0
 		for {
@@ -82,28 +88,29 @@ func (cache *Cache) controller() {
 			cache.state = working
 		}
 	}()
+	// The goroutine is reads channels that are waiting for access to delete
 	go func() {
-		go func() {
-			for {
-				chans = append(chans, <-cache.lockChan)
-				cache.state = awaitLock
-				cache.innerAction <- update
+		for {
+			chans = append(chans, <-cache.lockChan)
+			cache.state = awaitLock
+			cache.innerAction <- update
+		}
+	}()
+	// The goroutine is transfers access to a channel waiting for deletion access
+	go func() {
+		for {
+			<-cChan
+			for len(chans) != 0 {
+				chans[0] <- true
+				<-chans[0]
+				chans = chans[1:]
 			}
-		}()
-		go func() {
-			for {
-				<-cChan
-				for len(chans) != 0 {
-					chans[0] <- true
-					<-chans[0]
-					chans = chans[1:]
-				}
-				cChan <- true
-			}
-		}()
+			cChan <- true
+		}
 	}()
 }
 
+// When the cleaning time comes, it checks for the expiration date of the cache and passes the received keys for deletion
 func (cache *Cache) garbageCollector() {
 	for {
 		<-time.After(cache.cleaningInterval)

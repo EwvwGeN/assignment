@@ -4,6 +4,7 @@ import (
 	"sort"
 )
 
+// Returns two arrays whose elements are only in the first and only in the second input arrays
 func Difference[T any](a, b []T) (d, c []T) {
 	m := make(map[interface{}]int)
 

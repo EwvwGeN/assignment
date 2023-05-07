@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Attempt to write json to the structure and, if successful, run the following function
 func (server *Server) checkJson(next gin.HandlerFunc) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var document models.Document
@@ -26,6 +27,7 @@ func (server *Server) checkJson(next gin.HandlerFunc) gin.HandlerFunc {
 	}
 }
 
+// Attempt to get a document from id or from json and, if successful, launch the following function
 func (server *Server) checkExist(next gin.HandlerFunc) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		var document *models.Document
