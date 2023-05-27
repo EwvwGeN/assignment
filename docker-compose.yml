@@ -1,18 +1,7 @@
 version: "3"
-networks:
-  dbnet:
-    driver: bridge
-    external: true
-    name: dbnet
-    ipam:
-     config:
-       - subnet: 172.28.0.0/24
 services:
   reindexer:
     image: "reindexer/reindexer"
-    networks:
-      dbnet:
-        ipv4_address: 172.28.0.2
     ports:
       - "9088:9088"
       - "6534:6534"
@@ -23,13 +12,10 @@ services:
       context: ./
       args:
         - ISCNF
-    networks:
-      dbnet:
-        ipv4_address: 172.28.0.3
     ports:
       - "8080:8080"
     environment:
-      DB_HOST: "172.28.0.2"
+      DB_HOST: "reindexer"
     env_file:
       - .env
     depends_on:
