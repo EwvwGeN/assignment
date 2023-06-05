@@ -30,7 +30,6 @@ type docActionSaver struct {
 	workingСache  *Cache
 }
 
-// return clear struct?
 func (cahe *Cache) NewActionSaver() *docActionSaver {
 	newSaver := &docActionSaver{
 		Channel:       make(chan *ActionProperties),
@@ -80,17 +79,15 @@ func (das *docActionSaver) Commit() {
 
 func (das *docActionSaver) innerCommit() {
 	for id, v := range das.actionStorage {
-		if id == 0 {
-			continue
-		}
-		for action, properties := range v {
-			switch action {
-			case DELETE:
-				das.workingСache.innerDelDoc(id)
-			case UPDATE:
-				das.workingСache.innerUpdateDoc(id, properties)
+		go func(id int64, inputMap map[Action]map[string]interface{}) {
+			for action, properties := range inputMap {
+				switch action {
+				case DELETE:
+					das.workingСache.innerDelDoc(id)
+				case UPDATE:
+					das.workingСache.innerUpdateDoc(id, properties)
+				}
 			}
-		}
+		}(id, v)
 	}
-	das = nil
 }
