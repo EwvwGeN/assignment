@@ -32,22 +32,36 @@ func (server *Server) createDoc() gin.HandlerFunc {
 		server.db.Insert(server.config.CollectionName, &newDocument, "id=serial()")
 		// Writing to the json id of the created document
 		jsonData["Id"] = newDocument.Id
+
+		tx, err := server.db.BeginTx(server.config.CollectionName)
+		if err != nil {
+			ctx.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+
+		actionSaver := server.cache.NewActionSaver()
+
 		// Updating child documents of a document
-		if err := server.updateChild(jsonData); err != nil {
+		if err := server.updateChild(tx, actionSaver.Channel, jsonData); err != nil {
 			ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
 			return
 		}
 		// Updating the list of child documents
-		err := server.innerUpdateFields(newDocument.Id, map[string]interface{}{
+		server.innerUpdateFields(tx, actionSaver.Channel, newDocument.Id, map[string]interface{}{
 			"ChildList": childs,
 		})
 		if err != nil {
 			ctx.IndentedJSON(http.StatusNotFound, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
 			return
 		}
+		if err := tx.Commit(); err != nil {
+			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
+			return
+		}
+		actionSaver.Commit()
 		// Getting the document again to get all the changed fields and upload it to the cache
 		doc, _ := server.findDoc(newDocument.Id)
-		ctx.IndentedJSON(http.StatusOK, doc)
+		ctx.IndentedJSON(http.StatusCreated, doc)
 	})
 }
 
@@ -90,15 +104,25 @@ func (server *Server) updateDoc() gin.HandlerFunc {
 		id := ctx.GetInt64("id")
 		jsonData = ctx.GetStringMap("data")
 		jsonData["Id"] = id
-		if err := server.updateChild(jsonData); err != nil {
+
+		actionSaver := server.cache.NewActionSaver()
+		tx, _ := server.db.BeginTx(server.config.CollectionName)
+		if err := server.updateChild(tx, actionSaver.Channel, jsonData); err != nil {
 			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		if err := server.updateDocFields(id, jsonData); err != nil {
+		if err := server.updateDocFields(tx, actionSaver.Channel, id, jsonData); err != nil {
 			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+
+		if err := tx.Commit(); err != nil {
+			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
+			return
+		}
+		actionSaver.Commit()
+
 		ctx.IndentedJSON(http.StatusOK, gin.H{"message": "ok"})
 	}))
 }
@@ -108,6 +132,8 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 		var jsonData map[string]interface{}
 		id := ctx.GetInt64("id")
 		jsonData = ctx.GetStringMap("data")
+		actionSaver := server.cache.NewActionSaver()
+		tx, _ := server.db.BeginTx(server.config.CollectionName)
 		upperWg := new(sync.WaitGroup)
 		upperWg.Add(2)
 		// Start two goroutine to delete the lower documents and update the upper ones
@@ -121,7 +147,7 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 			for _, value := range childs {
 				go func(wg *sync.WaitGroup, id int64) {
 					defer wg.Done()
-					server.innerDelete(id)
+					server.innerDelete(tx, actionSaver.Channel, id)
 				}(wg, value)
 			}
 			wg.Wait()
@@ -142,16 +168,21 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 					}
 					return nil
 				}()
-				server.innerUpdateFields(parentId, map[string]interface{}{
+				server.innerUpdateFields(tx, actionSaver.Channel, parentId, map[string]interface{}{
 					"ChildList": parentChild,
 				})
-				server.updateDepth(parentDoc, parentChild)
+				server.updateDepth(tx, actionSaver.Channel, parentDoc, parentChild)
 			}
 
-			server.innerDelete(id)
+			server.innerDelete(tx, actionSaver.Channel, id)
 		}(upperWg)
-
 		upperWg.Wait()
+
+		if err := tx.Commit(); err != nil {
+			ctx.IndentedJSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("Can not create file: %w", err).Error()})
+			return
+		}
+		actionSaver.Commit()
 		ctx.IndentedJSON(http.StatusOK, gin.H{"message": "ok"})
 	})
 }

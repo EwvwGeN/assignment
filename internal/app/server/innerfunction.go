@@ -2,17 +2,17 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"sync"
 
+	"github.com/EwvwGeN/assignment/internal/cache"
 	"github.com/EwvwGeN/assignment/internal/models"
 	"github.com/EwvwGeN/assignment/internal/util"
 	"github.com/restream/reindexer"
 	"golang.org/x/sync/errgroup"
 )
 
-func (server *Server) updateChild(jsonData map[string]interface{}) error {
+func (server *Server) updateChild(tx *reindexer.Tx, channel chan *cache.ActionProperties, jsonData map[string]interface{}) error {
 	if jsonData["ChildList"] == nil {
 		return nil
 	}
@@ -31,8 +31,12 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	firstWg.Add(len(delChilds))
 	for _, childId := range delChilds {
 		go func(wg *sync.WaitGroup, childId int64) {
-			defer wg.Done()
-			server.innerDelete(childId)
+			server.innerDelete(tx, channel, childId)
+			channel <- &cache.ActionProperties{
+				DocId:  childId,
+				Action: cache.DELETE,
+			}
+			wg.Done()
 		}(firstWg, childId)
 	}
 	firstWg.Wait()
@@ -41,18 +45,15 @@ func (server *Server) updateChild(jsonData map[string]interface{}) error {
 	secondWg.Add(2)
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
-		server.updateDepth(doc, inputChilds)
+		server.updateDepth(tx, channel, doc, inputChilds)
 	}(secondWg)
 
 	go func(wg *sync.WaitGroup) {
 		defer wg.Done()
 		for _, v := range addChilds {
-			err := server.innerUpdateFields(v, map[string]interface{}{
+			server.innerUpdateFields(tx, channel, v, map[string]interface{}{
 				"ParentId": id,
 			})
-			if err != nil {
-				log.Fatal(err)
-			}
 		}
 	}(secondWg)
 
@@ -110,29 +111,26 @@ func (server *Server) getDocHeight(id int64) (interface{}, error) {
 	return currentHight, nil
 }
 
-func (server *Server) innerDelete(id int64) *models.Document {
-	doc, _ := server.findDoc(id)
+func (server *Server) innerDelete(tx *reindexer.Tx, channel chan *cache.ActionProperties, id int64) {
+	doc, _ := server.txGetFromDB(tx, id)
 	if doc.ChildList != nil {
 		for _, value := range doc.ChildList {
-			server.innerDelete(value)
+			server.innerDelete(tx, channel, value)
 		}
 	}
-	wg := new(sync.WaitGroup)
-	wg.Add(2)
-	go func(wg *sync.WaitGroup) {
-		server.delFromCache(id)
-		wg.Done()
-	}(wg)
-	go func(wg *sync.WaitGroup) {
-		server.delFromDB(id)
-		wg.Done()
-	}(wg)
-	wg.Wait()
-	return doc
+	server.txDelFromDB(tx, id)
+	channel <- &cache.ActionProperties{
+		DocId:  id,
+		Action: cache.DELETE,
+	}
 }
 
 func (server *Server) delFromCache(id int64) {
 	server.cache.DelDoc(id)
+}
+
+func (server *Server) txDelFromDB(tx *reindexer.Tx, id int64) {
+	tx.Query().WhereInt64("id", reindexer.EQ, id).Delete()
 }
 
 func (server *Server) delFromDB(id int64) {
@@ -153,6 +151,14 @@ func (server *Server) findDoc(id int64) (*models.Document, bool) {
 
 func (server *Server) getFromCache(id int64) *models.Document {
 	return server.cache.GetDoc(id)
+}
+
+func (server *Server) txGetFromDB(tx *reindexer.Tx, id int64) (*models.Document, bool) {
+	doc, found := tx.Query().WhereInt64("id", reindexer.EQ, id).Get()
+	if !found {
+		return nil, found
+	}
+	return doc.(*models.Document), found
 }
 
 func (server *Server) getFromBD(id int64) (*models.Document, bool) {
@@ -176,7 +182,7 @@ func (server *Server) bigDoc(input interface{}) models.BigDocument {
 	return bigDoc
 }
 
-func (server *Server) updateDepth(document *models.Document, newChilds []int64) {
+func (server *Server) updateDepth(tx *reindexer.Tx, channel chan *cache.ActionProperties, document *models.Document, newChilds []int64) {
 	doc := document
 	id := doc.Id
 	childs := newChilds
@@ -184,7 +190,7 @@ func (server *Server) updateDepth(document *models.Document, newChilds []int64) 
 	maxChildDepth := -1
 	for id != 0 {
 		if len(childs) != 0 {
-			query := server.db.Query(server.config.CollectionName).WhereInt64("id", reindexer.EQ, childs...)
+			query := tx.Query().WhereInt64("id", reindexer.EQ, childs...)
 			query.AggregateMax("Depth")
 			iterator := query.Exec()
 
@@ -196,14 +202,11 @@ func (server *Server) updateDepth(document *models.Document, newChilds []int64) 
 		if maxChildDepth+1 == depth {
 			break
 		}
-		err := server.innerUpdateFields(id, map[string]interface{}{
+		server.innerUpdateFields(tx, channel, id, map[string]interface{}{
 			"Depth": maxChildDepth + 1,
 		})
-		if err != nil {
-			log.Fatalln(err)
-		}
 		id = doc.ParentId
-		parentDoc, found := server.findDoc(id)
+		parentDoc, found := server.txGetFromDB(tx, id)
 		if !found {
 			break
 		}
@@ -212,7 +215,7 @@ func (server *Server) updateDepth(document *models.Document, newChilds []int64) 
 	}
 }
 
-func (server *Server) updateDocFields(id int64, jsonData map[string]interface{}) error {
+func (server *Server) updateDocFields(tx *reindexer.Tx, channel chan *cache.ActionProperties, id int64, jsonData map[string]interface{}) error {
 	changedFields := make(map[string]interface{})
 	var document models.AllowedField
 	types := reflect.TypeOf(document)
@@ -222,26 +225,24 @@ func (server *Server) updateDocFields(id int64, jsonData map[string]interface{})
 			changedFields[field.Name] = value
 		}
 	}
-	return server.innerUpdateFields(id, changedFields)
+	return server.innerUpdateFields(tx, channel, id, changedFields)
 }
 
 // Updating document fields in a transaction and updating them in the cache if successful
-func (server *Server) innerUpdateFields(id int64, jsonData map[string]interface{}) error {
+func (server *Server) innerUpdateFields(tx *reindexer.Tx, channel chan *cache.ActionProperties, id int64, jsonData map[string]interface{}) error {
 	var document models.Document
-	tx, err := server.db.BeginTx(server.config.CollectionName)
-	if err != nil {
-		return err
-	}
 	query := tx.Query().WhereInt64("id", reindexer.EQ, id)
 	types := reflect.TypeOf(document)
 	for key, value := range jsonData {
 		field, _ := types.FieldByName(key)
 		query.Set(field.Name, value)
+		channel <- &cache.ActionProperties{
+			DocId:    id,
+			Action:   cache.UPDATE,
+			Field:    field.Name,
+			NewValue: value,
+		}
 	}
 	query.Update()
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	go server.cache.UpdateDoc(id, jsonData)
 	return nil
 }
