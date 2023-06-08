@@ -30,10 +30,11 @@ type docActionSaver struct {
 	workingСache  *Cache
 }
 
-func (cahe *Cache) NewActionSaver() *docActionSaver {
+func (cache *Cache) NewActionSaver() *docActionSaver {
 	newSaver := &docActionSaver{
 		Channel:       make(chan *ActionProperties),
 		actionStorage: make(map[int64]map[Action]map[string]interface{}),
+		workingСache:  cache,
 	}
 	newSaver.controller()
 	return newSaver
