@@ -1,5 +1,7 @@
 package cache
 
+import "sync"
+
 type Action string
 
 const (
@@ -79,8 +81,10 @@ func (das *docActionSaver) Commit() {
 }
 
 func (das *docActionSaver) innerCommit() {
+	wg := new(sync.WaitGroup)
+	wg.Add(len(das.actionStorage))
 	for id, v := range das.actionStorage {
-		go func(id int64, inputMap map[Action]map[string]interface{}) {
+		go func(id int64, inputMap map[Action]map[string]interface{}, wg *sync.WaitGroup) {
 			for action, properties := range inputMap {
 				switch action {
 				case DELETE:
@@ -89,6 +93,8 @@ func (das *docActionSaver) innerCommit() {
 					das.workingСache.innerUpdateDoc(id, properties)
 				}
 			}
-		}(id, v)
+			wg.Done()
+		}(id, v, wg)
 	}
+	wg.Wait()
 }
