@@ -187,17 +187,21 @@ func (server *Server) updateDepth(tx *reindexer.Tx, channel chan *cache.ActionPr
 	id := doc.Id
 	childs := newChilds
 	depth := doc.Depth
+	previousDepth := -1
 	maxChildDepth := -1
 	for id != 0 {
 		if len(childs) != 0 {
 			query := tx.Query().WhereInt64("id", reindexer.EQ, childs...)
 			query.AggregateMax("Depth")
 			iterator := query.Exec()
-
+			fmt.Println(iterator.AggResults())
 			if len(iterator.AggResults()) != 0 {
 				maxChildDepth = int(iterator.AggResults()[0].Value)
 			}
 			iterator.Close()
+		}
+		if previousDepth > maxChildDepth {
+			maxChildDepth = previousDepth
 		}
 		if maxChildDepth+1 == depth {
 			break
@@ -205,13 +209,24 @@ func (server *Server) updateDepth(tx *reindexer.Tx, channel chan *cache.ActionPr
 		server.innerUpdateFields(tx, channel, id, map[string]interface{}{
 			"Depth": maxChildDepth + 1,
 		})
+		previousDepth = maxChildDepth + 1
+		processedСhild := id
 		id = doc.ParentId
 		parentDoc, found := server.txGetFromDB(tx, id)
 		if !found {
 			break
 		}
-		childs = parentDoc.ChildList
-		depth = parentDoc.Depth
+		doc = parentDoc
+		childs = func() []int64 {
+			buffer := doc.ChildList
+			for i, value := range buffer {
+				if value == processedСhild {
+					return append(buffer[:i], buffer[i+1:]...)
+				}
+			}
+			return nil
+		}()
+		depth = doc.Depth
 	}
 }
 
