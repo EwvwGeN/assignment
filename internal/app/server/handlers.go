@@ -113,18 +113,7 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 		// Start two goroutine to delete the lower documents and update the upper ones
 		go func(upperWg *sync.WaitGroup) {
 			defer upperWg.Done()
-			wg := new(sync.WaitGroup)
-			buffer, _ := jsonData["ChildList"].([]interface{})
-			childs := util.ArrToInt64(buffer)
-			wg.Add(len(childs))
-			// Deleting all child documents
-			for _, value := range childs {
-				go func(wg *sync.WaitGroup, id int64) {
-					defer wg.Done()
-					server.innerDelete(id)
-				}(wg, value)
-			}
-			wg.Wait()
+			server.innerDelete(id)
 		}(upperWg)
 
 		go func(upperWg *sync.WaitGroup) {
@@ -147,8 +136,6 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 				})
 				server.updateDepth(parentDoc, parentChild)
 			}
-
-			server.innerDelete(id)
 		}(upperWg)
 
 		upperWg.Wait()
