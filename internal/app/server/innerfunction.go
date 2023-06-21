@@ -190,7 +190,6 @@ func (server *Server) updateDepth(tx *reindexer.Tx, channel chan *cache.ActionPr
 			query := tx.Query().WhereInt64("id", reindexer.EQ, childs...)
 			query.AggregateMax("Depth")
 			iterator := query.Exec()
-			fmt.Println(iterator.AggResults())
 			if len(iterator.AggResults()) != 0 {
 				maxChildDepth = int(iterator.AggResults()[0].Value)
 			}
