@@ -32,10 +32,6 @@ func (server *Server) updateChild(tx *reindexer.Tx, channel chan *cache.ActionPr
 	for _, childId := range delChilds {
 		go func(wg *sync.WaitGroup, childId int64) {
 			server.innerDelete(tx, channel, childId)
-			channel <- &cache.ActionProperties{
-				DocId:  childId,
-				Action: cache.DELETE,
-			}
 			wg.Done()
 		}(firstWg, childId)
 	}
@@ -243,7 +239,7 @@ func (server *Server) updateDocFields(tx *reindexer.Tx, channel chan *cache.Acti
 	return server.innerUpdateFields(tx, channel, id, changedFields)
 }
 
-// Updating document fields in a transaction and updating them in the cache if successful
+// Updating document fields in a transaction and adding action to the saver for future cache update
 func (server *Server) innerUpdateFields(tx *reindexer.Tx, channel chan *cache.ActionProperties, id int64, jsonData map[string]interface{}) error {
 	var document models.Document
 	query := tx.Query().WhereInt64("id", reindexer.EQ, id)
