@@ -80,7 +80,7 @@ func (server *Server) getAllDocs() gin.HandlerFunc {
 // Get all documents that do not have a parent and bring them to the structure of the document with
 // the expanded child elements
 func (server *Server) getAllBigDocs(ctx *gin.Context) {
-	query := server.db.Query(server.config.CollectionName).Where("parent_id", reindexer.EQ, 0)
+	query := server.db.Query(server.config.CollectionName).Where("ParentId", reindexer.EQ, 0)
 	iterator := query.Exec()
 	defer iterator.Close()
 	for iterator.Next() {
