@@ -50,20 +50,20 @@ func (server *Server) Start() {
 	server.prepareCollections()
 	server.configureRouter()
 	fmt.Println("Server started")
+	server.router.Run(fmt.Sprintf("%s:%s", server.config.ApiHost, server.config.APiPort))
 }
 
 func (server *Server) configureRouter() {
-	simpleDocGroupe := server.router.Group("/doc")
+	simpleDocGroupe := server.router.Group("/docs")
 	{
-		simpleDocGroupe.GET("/all", server.getAllDocs())
-		simpleDocGroupe.GET("/id=:id", server.getDocById())
+		simpleDocGroupe.GET("", server.getAllDocs())
+		simpleDocGroupe.GET("/:id", server.getDocById())
 		simpleDocGroupe.POST("", server.createDoc())
 		simpleDocGroupe.PUT("", server.updateDoc())
-		simpleDocGroupe.DELETE("/id=:id", server.deleteDoc())
+		simpleDocGroupe.DELETE("/:id", server.deleteDoc())
 	}
-	bigDocGroupe := server.router.Group("/big-doc")
+	bigDocGroupe := server.router.Group("/big-docs")
 	{
-		bigDocGroupe.GET("/all", server.getAllBigDocs)
+		bigDocGroupe.GET("", server.getAllBigDocs)
 	}
-	server.router.Run(fmt.Sprintf("%s:%s", server.config.ApiHost, server.config.APiPort))
 }
