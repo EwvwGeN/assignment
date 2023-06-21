@@ -162,8 +162,6 @@ func (server *Server) deleteDoc() gin.HandlerFunc {
 				})
 				server.updateDepth(tx, actionSaver.Channel, parentDoc, parentChild)
 			}
-
-			server.innerDelete(tx, actionSaver.Channel, id)
 		}(upperWg)
 		upperWg.Wait()
 
