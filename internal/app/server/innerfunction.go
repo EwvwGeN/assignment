@@ -65,20 +65,23 @@ func (server *Server) checkChild(id int64, child []int64) error {
 	docHeight := height.(int)
 	eg := &errgroup.Group{}
 	for _, value := range child {
-		id := value
+		childId := value
 		eg.Go(func() error {
-			doc, found := server.findDoc(id)
+			if id == childId {
+				return fmt.Errorf("%s: File Id:%d", DocumentSelfNested.Error(), childId)
+			}
+			doc, found := server.findDoc(childId)
 			if !found {
-				return fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), id)
+				return fmt.Errorf("%s: File Id:%d", DocumentNotExist.Error(), childId)
 			}
 			buffer := doc
 			parentId := buffer.ParentId
 			if parentId != 0 {
-				return fmt.Errorf("%s: File Id:%d", DocumentHaveParent.Error(), id)
+				return fmt.Errorf("%s: File Id:%d", DocumentHaveParent.Error(), childId)
 			}
 			depth := buffer.Depth
 			if depth+docHeight+1 > server.config.NestingLevel {
-				return fmt.Errorf("%s: File Id:%d", DeplthLevel.Error(), id)
+				return fmt.Errorf("%s: File Id:%d", DeplthLevel.Error(), childId)
 			}
 			return nil
 		})

@@ -13,6 +13,7 @@ import (
 
 var (
 	NullId             = errors.New("Missing Id")
+	DocumentSelfNested = errors.New("Document cant be self nested")
 	DocumentNotExist   = errors.New("Document doesnt exist")
 	DocumentHaveParent = errors.New("Document already have parent")
 	DeplthLevel        = errors.New("Nesting level is higher than allowed")
