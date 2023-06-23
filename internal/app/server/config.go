@@ -21,7 +21,7 @@ func NewConfig() *Config {
 	return &Config{
 		ApiHost:               getEnv("API_HOST", "0.0.0.0"),
 		APiPort:               getEnv("API_PORT", "8080"),
-		DbHost:                getEnv("DB_HOST", "172.18.0.2"),
+		DbHost:                getEnv("DB_HOST", "0.0.0.0"),
 		DbPort:                getEnv("DB_PORT", "6534"),
 		DBname:                getEnv("DB_NAME", "testdb"),
 		CollectionName:        getEnv("COLLECTION_NAME", "documents"),
