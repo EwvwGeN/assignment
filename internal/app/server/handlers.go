@@ -79,15 +79,26 @@ func (server *Server) getAllDocs() gin.HandlerFunc {
 
 // Get all documents that do not have a parent and bring them to the structure of the document with
 // the expanded child elements
-func (server *Server) getAllBigDocs(ctx *gin.Context) {
-	query := server.db.Query(server.config.CollectionName).Where("ParentId", reindexer.EQ, 0)
-	iterator := query.Exec()
-	defer iterator.Close()
-	for iterator.Next() {
-		elem := iterator.Object().(*models.Document)
-		bigDoc := server.bigDoc(elem)
-		ctx.IndentedJSON(http.StatusOK, bigDoc)
+func (server *Server) getAllBigDocs() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		query := server.db.Query(server.config.CollectionName).Where("ParentId", reindexer.EQ, 0)
+		iterator := query.Exec()
+		defer iterator.Close()
+		for iterator.Next() {
+			elem := iterator.Object().(*models.Document)
+			bigDoc := server.bigDoc(elem)
+			ctx.IndentedJSON(http.StatusOK, bigDoc)
+		}
 	}
+}
+
+func (server *Server) getBigDocById() gin.HandlerFunc {
+	return server.checkExist(func(ctx *gin.Context) {
+		id := ctx.GetInt64("id")
+		doc, _ := server.findDoc(id)
+		bigDoc := server.bigDoc(doc)
+		ctx.IndentedJSON(http.StatusOK, bigDoc)
+	})
 }
 
 func (server *Server) getDocById() gin.HandlerFunc {

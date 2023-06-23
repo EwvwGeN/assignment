@@ -65,6 +65,7 @@ func (server *Server) configureRouter() {
 	}
 	bigDocGroupe := server.router.Group("/big-docs")
 	{
-		bigDocGroupe.GET("", server.getAllBigDocs)
+		bigDocGroupe.GET("", server.getAllBigDocs())
+		bigDocGroupe.GET("/:id", server.getBigDocById())
 	}
 }
