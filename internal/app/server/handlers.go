@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 
 	"github.com/EwvwGeN/assignment/internal/models"
@@ -87,6 +88,11 @@ func (server *Server) getAllBigDocs() gin.HandlerFunc {
 		for iterator.Next() {
 			elem := iterator.Object().(*models.Document)
 			bigDoc := server.bigDoc(elem)
+			if bigDoc.ChildList != nil {
+				sort.Slice(bigDoc.ChildList, func(i, j int) bool {
+					return bigDoc.ChildList[i].Sort > bigDoc.ChildList[j].Sort
+				})
+			}
 			ctx.IndentedJSON(http.StatusOK, bigDoc)
 		}
 	}
@@ -96,7 +102,15 @@ func (server *Server) getBigDocById() gin.HandlerFunc {
 	return server.checkExist(func(ctx *gin.Context) {
 		id := ctx.GetInt64("id")
 		doc, _ := server.findDoc(id)
+		for doc.ParentId != 0 {
+			doc, _ = server.findDoc(doc.ParentId)
+		}
 		bigDoc := server.bigDoc(doc)
+		if bigDoc.ChildList != nil {
+			sort.Slice(bigDoc.ChildList, func(i, j int) bool {
+				return bigDoc.ChildList[i].Sort > bigDoc.ChildList[j].Sort
+			})
+		}
 		ctx.IndentedJSON(http.StatusOK, bigDoc)
 	})
 }

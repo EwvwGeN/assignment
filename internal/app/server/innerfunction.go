@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
@@ -172,9 +173,11 @@ func (server *Server) getFromBD(id int64) (*models.Document, bool) {
 func (server *Server) bigDoc(input interface{}) models.BigDocument {
 	var bigDoc models.BigDocument
 	item := input.(*models.Document)
-	bigDoc.Id = item.Id
-	bigDoc.Body = item.Body
-	for _, childId := range item.ChildList {
+	ChildList := item.ChildList
+	buffer, _ := json.Marshal(item)
+	json.Unmarshal(buffer, &bigDoc)
+	bigDoc.ChildList = nil
+	for _, childId := range ChildList {
 		childDoc, _ := server.findDoc(childId)
 		bigDoc.ChildList = append(bigDoc.ChildList, server.bigDoc(childDoc))
 	}
