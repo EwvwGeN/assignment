@@ -16,6 +16,6 @@ func SetValueByName(v interface{}, field string, newval interface{}) {
 		}
 		return
 	}
-	r.Set(reflect.ValueOf(newval))
+	r.Set(reflect.ValueOf(newval).Convert(r.Type()))
 
 }
