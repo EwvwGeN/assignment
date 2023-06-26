@@ -28,7 +28,7 @@ cache_cleaning_interval_m: 10
 ```
 
 Где
-- api_host, api_port — адрес, по кторому будет работать api
+- api_host, api_port — адрес, по которому будет работать api
 - db_host, db_port, db_name, collection_name — данные для подключения к reindexer (хост, порт, имя подключаемой базы данных и коллекция внутри бд соответственно)
 - nesting_level — максимальный допустимый уровень вложенности документов
 - cache_life_time_m, cache_cleaning_interval_m — время жизни кеша и интервал очистки.
