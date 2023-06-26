@@ -13,8 +13,8 @@ type Config struct {
 	DBname                string `yaml:"db_name"`
 	CollectionName        string `yaml:"collection_name"`
 	NestingLevel          int    `yaml:"nesting_level"`
-	CachelifeTime         int    `yaml:"cache_life_time_min"`
-	CacheCleaningInterval int    `yaml:"cache_cleaning_interval_min"`
+	CachelifeTime         int    `yaml:"cache_life_time_m"`
+	CacheCleaningInterval int    `yaml:"cache_cleaning_interval_m"`
 }
 
 func NewConfig() *Config {
