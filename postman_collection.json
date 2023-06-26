@@ -1,0 +1,129 @@
+{
+	"info": {
+		"_postman_id": "c2066679-94e4-4183-bf4e-44757112af90",
+		"name": "http_request",
+		"schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json",
+		"_exporter_id": "27700701"
+	},
+	"item": [
+		{
+			"name": "create_child",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"Id\": 0,\r\n    \"Body\": \"Body of new-created document\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://localhost:8080/docs"
+			},
+			"response": []
+		},
+		{
+			"name": "create_parent",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"Id\": 0,\r\n    \"Body\": \"parent document\",\r\n    \"ChildList\": []\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://localhost:8080/doc"
+			},
+			"response": []
+		},
+		{
+			"name": "get_all_docs",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://localhost:8080/doc/all"
+			},
+			"response": []
+		},
+		{
+			"name": "get_doc_by_id",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://localhost:8080/doc/all"
+			},
+			"response": []
+		},
+		{
+			"name": "get_big_doc_by_id",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": "http://localhost:8080/doc/all"
+			},
+			"response": []
+		},
+		{
+			"name": "get_all_big_docs",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8080/big-docs?page=2&limit=1",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"big-docs"
+					],
+					"query": [
+						{
+							"key": "page",
+							"value": "2"
+						},
+						{
+							"key": "limit",
+							"value": "1"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "upd_doc",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"Id\": 31,\r\n    \"Body\": \"updated document thirty one\",\r\n    \"ChildList\": [33]\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": "http://localhost:8080/docs"
+			},
+			"response": []
+		},
+		{
+			"name": "del_doc",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": "http://localhost:8080/doc/id="
+			},
+			"response": []
+		}
+	]
+}
