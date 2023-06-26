@@ -1,0 +1,25 @@
+version: "3"
+services:
+  reindexer:
+    image: "reindexer/reindexer"
+    ports:
+      - "9088:9088"
+      - "6534:6534"
+    volumes:
+      - "storage:/db"
+  server:
+    build:
+      context: ./
+      args:
+        - ISCNF
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: "reindexer"
+    env_file:
+      - .env
+    depends_on:
+      - reindexer
+volumes:
+  storage:
+    external: true

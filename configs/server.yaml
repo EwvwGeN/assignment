@@ -1,0 +1,9 @@
+api_host: "0.0.0.0"
+api_port: "8080"
+db_host: "0.0.0.0"
+db_port: "6534"
+db_name: "testdb"
+collection_name: "documents"
+nesting_level: 2
+cache_life_time_m: 15
+cache_cleaning_interval_m: 10
