@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"sync"
 
 	"github.com/EwvwGeN/assignment/internal/models"
@@ -68,7 +69,20 @@ func (server *Server) createDoc() gin.HandlerFunc {
 
 func (server *Server) getAllDocs() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		page, err := strconv.Atoi(ctx.DefaultQuery("page", "0"))
+		if err != nil || page < 0 {
+			ctx.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		limit, err := strconv.Atoi(ctx.DefaultQuery("limit", "10"))
+		if err != nil || limit < 0 {
+			ctx.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
 		query := server.db.Query(server.config.CollectionName)
+		if page != 0 {
+			query = query.Limit(limit).Offset((page - 1) * limit)
+		}
 		iterator := query.Exec()
 		defer iterator.Close()
 		for iterator.Next() {
@@ -82,7 +96,21 @@ func (server *Server) getAllDocs() gin.HandlerFunc {
 // the expanded child elements
 func (server *Server) getAllBigDocs() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		page, err := strconv.Atoi(ctx.DefaultQuery("page", "0"))
+		if err != nil || page < 0 {
+			ctx.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
+		limit, err := strconv.Atoi(ctx.DefaultQuery("limit", "10"))
+		if err != nil || limit < 0 {
+			ctx.AbortWithStatus(http.StatusBadRequest)
+			return
+		}
 		query := server.db.Query(server.config.CollectionName).Where("ParentId", reindexer.EQ, 0)
+		if page != 0 {
+			query = query.Limit(limit).Offset((page - 1) * limit)
+		}
+
 		iterator := query.Exec()
 		defer iterator.Close()
 		for iterator.Next() {
