@@ -84,7 +84,7 @@ API реализует только http запросы. Доступными я
 #### POST
 Запрос осуществляется по пути /docs. В теле запроса может не быть информации, тогда будет создан новый пустой документ.
 Пример запроса:
-```json
+```
 POST /docs HTTP/1.1
 Content-Type: application/json
  
@@ -93,7 +93,7 @@ Content-Type: application/json
 }
 ```
 Ответ:
-```json
+```
 HTTP/1.1 201 Created
 Content-Type: application/json; charset=utf-8
 Date: Mon, 26 Jun 2023 15:17:39 GMT
@@ -128,7 +128,7 @@ Content-Length: 131
 GET /big-docs?page=2&limit=1 HTTP/1.1
 ```
 Ответ:
-```json
+```
 HTTP/1.1 200 OK
 Content-Type: application/json; charset=utf-8
 Date: Mon, 26 Jun 2023 15:24:10 GMT
@@ -160,7 +160,7 @@ Content-Length: 426
 #### PUT
 Запрос осуществляется по пути `/docs`. В теле запроса нужно указать Id и поля, которые необходимо обновить. Для обновления доступны поля `ChildList`, `Sort`, а также все несистемные. Ответ при обновлении будет либо ошибка, либо сообщение об успешном обновлении.
 Пример запроса:
-```json
+```
 PUT /docs HTTP/1.1
 Content-Type: application/json
 
@@ -170,7 +170,7 @@ Content-Type: application/json
 }
 ```
 Ответ:
-```json
+```
 HTTP/1.1 200 OK
 Content-Type: application/json; charset=utf-8
 Date: Mon, 26 Jun 2023 15:30:00 GMT
@@ -186,11 +186,11 @@ Content-Length: 23
 Запрос осуществляется по пути `/docs/:id`. При удалении документа все дочерние документы также удаляются, при этом обновляется глубина у всех документов верхнего уровня.
 
 Пример запроса:
-```json
+```
 DELETE /docs/36 HTTP/1.1
 ```
 Ответ:
-```json
+```
 HTTP/1.1 200 OK
 Content-Type: application/json; charset=utf-8
 Date: Mon, 26 Jun 2023 15:31:57 GMT
