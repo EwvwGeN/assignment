@@ -9,7 +9,7 @@ import (
 	"github.com/EwvwGeN/assignment/internal/cache"
 	"github.com/EwvwGeN/assignment/internal/models"
 	"github.com/EwvwGeN/assignment/internal/util"
-	"github.com/restream/reindexer"
+	"github.com/restream/reindexer/v3"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -197,7 +197,7 @@ func (server *Server) updateDepth(tx *reindexer.Tx, channel chan *cache.ActionPr
 			query.AggregateMax("Depth")
 			iterator := query.Exec()
 			if len(iterator.AggResults()) != 0 {
-				maxChildDepth = int(iterator.AggResults()[0].Value)
+				maxChildDepth = int(*iterator.AggResults()[0].Value)
 			}
 			iterator.Close()
 		}

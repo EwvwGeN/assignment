@@ -11,11 +11,16 @@ import (
 	"github.com/EwvwGeN/assignment/internal/models"
 	"github.com/EwvwGeN/assignment/internal/util"
 	"github.com/gin-gonic/gin"
-	"github.com/restream/reindexer"
+	"github.com/restream/reindexer/v3"
+	"go.opentelemetry.io/otel"
 )
 
 func (server *Server) createDoc() gin.HandlerFunc {
 	return server.checkJson(func(ctx *gin.Context) {
+		traceCtx, span_one := otel.Tracer("CreateDoc").Start(ctx.Request.Context(), "Create doc handler")
+		defer span_one.End()
+		*ctx.Request = *ctx.Request.WithContext(traceCtx)
+		server.db.WithContext(ctx.Request.Context())
 		jsonData := ctx.GetStringMap("data")
 		jsonStr, _ := json.Marshal(jsonData)
 		var newDocument models.Document
@@ -69,6 +74,10 @@ func (server *Server) createDoc() gin.HandlerFunc {
 
 func (server *Server) getAllDocs() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		traceCtx, span_one := otel.Tracer("GetAllDocs").Start(ctx.Request.Context(), "Get all docs handler")
+		defer span_one.End()
+		*ctx.Request = *ctx.Request.WithContext(traceCtx)
+		server.db.WithContext(ctx.Request.Context())
 		page, err := strconv.Atoi(ctx.DefaultQuery("page", "0"))
 		if err != nil || page < 0 {
 			ctx.AbortWithStatus(http.StatusBadRequest)
@@ -96,6 +105,10 @@ func (server *Server) getAllDocs() gin.HandlerFunc {
 // the expanded child elements
 func (server *Server) getAllBigDocs() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		traceCtx, span_one := otel.Tracer("GetAllBigDocs").Start(ctx.Request.Context(), "Get all big docs handler")
+		defer span_one.End()
+		*ctx.Request = *ctx.Request.WithContext(traceCtx)
+		server.db.WithContext(ctx.Request.Context())
 		page, err := strconv.Atoi(ctx.DefaultQuery("page", "0"))
 		if err != nil || page < 0 {
 			ctx.AbortWithStatus(http.StatusBadRequest)
@@ -128,6 +141,10 @@ func (server *Server) getAllBigDocs() gin.HandlerFunc {
 
 func (server *Server) getBigDocById() gin.HandlerFunc {
 	return server.checkExist(func(ctx *gin.Context) {
+		traceCtx, span_one := otel.Tracer("GetBigDocById").Start(ctx.Request.Context(), "Get big doc handler")
+		defer span_one.End()
+		*ctx.Request = *ctx.Request.WithContext(traceCtx)
+		server.db.WithContext(ctx.Request.Context())
 		id := ctx.GetInt64("id")
 		doc, _ := server.findDoc(id)
 		for doc.ParentId != 0 {
@@ -145,6 +162,10 @@ func (server *Server) getBigDocById() gin.HandlerFunc {
 
 func (server *Server) getDocById() gin.HandlerFunc {
 	return server.checkExist(func(ctx *gin.Context) {
+		traceCtx, span_one := otel.Tracer("GetDocById").Start(ctx.Request.Context(), "Get doc handler")
+		defer span_one.End()
+		*ctx.Request = *ctx.Request.WithContext(traceCtx)
+		server.db.WithContext(ctx.Request.Context())
 		id := ctx.GetInt64("id")
 		doc, _ := server.findDoc(id)
 		ctx.IndentedJSON(http.StatusOK, doc)
@@ -153,6 +174,10 @@ func (server *Server) getDocById() gin.HandlerFunc {
 
 func (server *Server) updateDoc() gin.HandlerFunc {
 	return server.checkJson(server.checkExist(func(ctx *gin.Context) {
+		traceCtx, span_one := otel.Tracer("UpdateDoc").Start(ctx.Request.Context(), "Update doc handler")
+		defer span_one.End()
+		*ctx.Request = *ctx.Request.WithContext(traceCtx)
+		server.db.WithContext(ctx.Request.Context())
 		var jsonData map[string]interface{}
 		id := ctx.GetInt64("id")
 		jsonData = ctx.GetStringMap("data")
@@ -182,6 +207,10 @@ func (server *Server) updateDoc() gin.HandlerFunc {
 
 func (server *Server) deleteDoc() gin.HandlerFunc {
 	return server.checkExist(func(ctx *gin.Context) {
+		traceCtx, span_one := otel.Tracer("DeleteDoc").Start(ctx.Request.Context(), "Delete doc handler")
+		defer span_one.End()
+		*ctx.Request = *ctx.Request.WithContext(traceCtx)
+		server.db.WithContext(ctx.Request.Context())
 		var jsonData map[string]interface{}
 		id := ctx.GetInt64("id")
 		jsonData = ctx.GetStringMap("data")
